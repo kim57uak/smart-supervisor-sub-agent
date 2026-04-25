@@ -1,0 +1,92 @@
+@startuml
+!pragma layout smetana
+title 07. Supervisor Agent Streaming Response Sequence (Python runtime)
+
+skinparam shadowing false
+
+actor User
+participant "supervisor_a2a_endpoint" as Controller
+participant "supervisor_a2a_request_validator" as Validator
+participant "supervisor_agent_service" as Service
+participant "hitl_gate_service" as HitlGate
+participant "supervisor_stream_progress_service" as StreamProgress
+participant "supervisor_execution_service" as ExecutionService
+participant "supervisor_execution_persistence_service" as PersistenceFacade
+participant "supervisor_agent_orchestrator" as Orchestrator
+participant "supervisor_progress_publisher" as ProgressPublisher
+participant "supervisor_response_compose_service" as Composer
+participant "default_supervisor_llm_runtime" as Runtime
+participant "execution_completion_persistence_strategy" as CompletionStrategy
+participant "execution_consistency_coordinator" as Consistency
+
+User -> Controller : POST /a2a/supervisor\nAccept: text/event-stream\nJSON-RPC method:\nmessage/stream or SendStreamingMessage
+Controller -> Validator : precheck + validateSendParams
+Validator --> Controller : message + model
+Controller -> Service : streamEvents(session_id, message, model)
+Service -> StreamProgress : initialHitlEvaluationEvents(...)
+Service --> Controller : SupervisorOutputEvent(PROGRESS)
+Controller --> User : event: chunk
+
+Service -> HitlGate : evaluate(...)
+alt review required
+  Service -> HitlGate : openReview(...)
+  HitlGate -> PersistenceFacade : openReview(...)
+  PersistenceFacade -> Consistency : createWaitingReviewWithSnapshot(...)
+  Service -> StreamProgress : hitlRequiredEvents(...)
+  Service --> Controller : SupervisorOutputEvent(PROGRESS)
+  Service --> Controller : SupervisorOutputEvent(PROGRESS)
+  Controller --> User : event: chunk
+  Controller --> User : event: chunk
+  Controller --> User : event: done
+else review not required
+  Service -> StreamProgress : hitlPassedEvents(...)
+  Service -> ExecutionService : executeStreamEvents(...)
+  ExecutionService -> Orchestrator : executeEvents(...)
+  Orchestrator -> ProgressPublisher : emitEvent(...)
+  Orchestrator --> Controller : SupervisorOutputEvent(PROGRESS)
+  Controller --> User : event: chunk
+
+  Orchestrator -> Composer : streamComposeEvents(context)
+  Composer -> Runtime : stream(prompt, model, session_id)
+  Runtime --> Composer : AsyncIterator[SupervisorOutputEvent]
+
+  loop compose output
+    alt reasoning event
+      Composer --> Orchestrator : SupervisorOutputEvent(REASONING)
+      Orchestrator --> Controller : SupervisorOutputEvent(REASONING)
+      Controller --> User : event: reasoning
+    else text event
+      Composer --> Orchestrator : SupervisorOutputEvent(TEXT)
+      Orchestrator --> Controller : SupervisorOutputEvent(TEXT)
+      Controller --> User : event: chunk
+    else a2ui event
+      Composer --> Orchestrator : SupervisorOutputEvent(A2UI)
+      Orchestrator --> Controller : SupervisorOutputEvent(A2UI)
+      Controller --> User : event: a2ui
+    end
+  end
+
+  Orchestrator -> PersistenceFacade : persistCompletion(...)
+  PersistenceFacade -> CompletionStrategy : execute(command)
+  CompletionStrategy -> Consistency : completeExecution(...)
+  Orchestrator -> ProgressPublisher : emit completed progress
+  Orchestrator --> Controller : SupervisorOutputEvent(PROGRESS)
+  Controller --> User : event: chunk
+  Controller --> User : event: done
+end
+
+note right of Controller
+Current SSE framing
+- event: reasoning
+- event: chunk
+- event: a2ui
+- event: error
+- event: done
+- progress/reasoning are transport-only and not persisted as task payload
+
+Request method compatibility
+- legacy: message/stream
+- current: SendStreamingMessage
+- validator normalizes to one internal stream operation
+end note
+@enduml

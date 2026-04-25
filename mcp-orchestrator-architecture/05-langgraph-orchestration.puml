@@ -1,0 +1,19 @@
+@startuml
+title 05. LangGraph Orchestration (Target Flow)
+
+skinparam shadowing false
+
+[*] --> load_context
+load_context --> select_tools
+select_tools --> execute_tools
+execute_tools --> finalize_context
+finalize_context --> compose_response
+compose_response --> [*]
+
+note right of compose_response
+- endpoint/A2A response contracts stay outside graph internals
+- compose is final-answer only
+- no MCP recall in compose
+end note
+
+@enduml

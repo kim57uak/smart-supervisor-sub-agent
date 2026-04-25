@@ -1,0 +1,111 @@
+@startuml
+title 19. Supervisor Runtime Sequence (Python target architecture, 2026-04-25)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 20
+
+actor User
+participant "supervisor_a2a_endpoint" as Controller
+participant "supervisor_a2a_request_validator" as Validator
+participant "supervisor_agent_service" as AgentService
+participant "supervisor_pre_hitl_a2ui_service" as PreHitlA2ui
+participant "hitl_gate_service" as HitlGate
+participant "supervisor_execution_service" as ExecutionService
+participant "supervisor_execution_persistence_service" as PersistenceFacade
+participant "supervisor_read_facade" as ReadFacade
+participant "supervisor_agent_orchestrator" as Orchestrator
+participant "supervisor_graph_execution_service" as GraphExecution
+participant "supervisor_execution_state_loader" as StateLoader
+participant "LangGraph CompiledGraph" as Graph
+participant "supervisor_planning_service" as Planner
+participant "a2a_invocation_service" as Invoker
+participant "handoff_policy_service" as HandoffPolicy
+participant "supervisor_swarm_coordinator" as Swarm
+participant "supervisor_response_compose_service" as Composer
+participant "execution_consistency_coordinator" as Consistency
+participant "supervisor_persistence_strategy_factory" as StrategyFactory
+participant "task_event_stream_service" as TaskEventStream
+
+User -> Controller : request\nJSON-RPC method family:\nmessage/send or SendMessage\nmessage/stream or SendStreamingMessage\nreview/task methods as configured
+Controller -> Validator : precheck + validate
+
+alt send/stream request
+  Controller -> AgentService : send(...) or streamEvents(...)
+  AgentService -> PreHitlA2ui : build(session_id, message, model)
+
+  alt pre-HITL A2UI exists
+    AgentService --> Controller : task or progress + text + a2ui
+  else no pre-HITL A2UI
+    AgentService -> HitlGate : planAndAssessReview(...)
+    alt HITL required
+      AgentService -> HitlGate : openReview(...)
+      HitlGate -> PersistenceFacade : openReview(...)
+      PersistenceFacade -> StrategyFactory : select(REVIEW_OPEN)
+      StrategyFactory --> PersistenceFacade : ReviewOpenStrategy
+      PersistenceFacade -> Consistency : createWaitingReviewWithSnapshot(...)
+      AgentService --> Controller : waiting review response/events
+    else HITL passed
+      AgentService -> ExecutionService : executeSync(...) / executeStreamEvents(...)
+      ExecutionService -> Orchestrator : executeEvents(...)
+      Orchestrator -> GraphExecution : execute(...)
+      GraphExecution -> StateLoader : build_restore_query(session_id)
+      StateLoader -> ReadFacade : read(restoreQuery)
+      ReadFacade -> Swarm : loadLatestBySession
+      GraphExecution -> Graph : invoke(routingSelectedState)
+      Graph -> Swarm : applyRoutingRule(...)
+
+      loop invoke / handoff cycle
+        Graph -> Invoker : invoke(invocationContext)\nusing message/send or SendMessage\nor message/stream or SendStreamingMessage
+        Invoker --> Graph : DownstreamCallResult
+        Graph -> HandoffPolicy : evaluate(handoffContext)
+        HandoffPolicy --> Graph : HandoffValidationResult list
+        Graph -> Swarm : record invocation/handoff events
+      end
+
+      Orchestrator -> Composer : streamComposeEvents(context)
+      Composer --> Orchestrator : text / a2ui events
+      Orchestrator -> PersistenceFacade : persistCompletion(...)
+      PersistenceFacade -> StrategyFactory : select(COMPLETION)
+      StrategyFactory --> PersistenceFacade : CompletionStrategy
+      PersistenceFacade -> Consistency : completeExecution(...)
+      Orchestrator --> Controller : SupervisorOutputEvent stream
+    end
+  end
+else review endpoint
+  User -> Controller : tasks/review/decide\nminimum fields:\ntask_id, decision(APPROVE|CANCEL)
+  Controller -> AgentService : getReview / decideReview / decideReviewStream
+  AgentService -> HitlGate : decideWithSnapshotVerification(...)
+  alt approve verified and drift safe
+    AgentService -> PersistenceFacade : startApprovedResume(...)
+    PersistenceFacade -> StrategyFactory : select(APPROVED_RESUME)
+    StrategyFactory --> PersistenceFacade : ApprovedResumeStrategy
+    PersistenceFacade -> Consistency : startApprovedResume(...)
+    Consistency -> TaskEventStream : reserve durable initial_cursor
+    AgentService -> ExecutionService : resumeApprovedSnapshot(...)
+    AgentService --> Controller : approve ack(task_id, state_version,\nexecution_mode, resume_accepted,\nstream_resume_required, initial_cursor)
+    note right of Controller
+    If execution_mode=STREAM:
+    - server snapshot is the verification source of truth
+    - client re-subscribes by task_id + initial_cursor
+    - progress/chunk/a2ui/done|error are replay-safe
+    - approve HTTP response does not carry the
+      resumed runtime stream itself
+    end note
+  else approve rejected or review reopened
+    AgentService --> Controller : resume_rejected(reason_code)\nor reopen review result
+  end
+end
+
+Controller --> User : JSON-RPC or SSE
+
+note right of Controller
+Compatibility
+- legacy: message/send, message/stream,
+  tasks/get, tasks/list, tasks/cancel
+- current: SendMessage, SendStreamingMessage,
+  GetTask, ListTasks, CancelTask
+- endpoint/validator normalize aliases before routing
+end note
+
+@enduml

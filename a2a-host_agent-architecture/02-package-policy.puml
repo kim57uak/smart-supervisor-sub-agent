@@ -1,0 +1,224 @@
+@startuml
+!pragma layout smetana
+title 02. Supervisor Agent Package Policy (Python runtime: src/app)
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+package "src/app" {
+  package "infrastructure.settings" {
+    class A2aSupervisorRoutingProperties
+    class SupervisorPromptProperties
+    class SupervisorStreamProperties
+  }
+
+  package "api" {
+    class supervisor_a2a_endpoint
+    class supervisor_a2a_request_validator
+  }
+
+  package "application" {
+    class supervisor_agent_service
+    class supervisor_agent_orchestrator
+    class supervisor_execution_service
+    class supervisor_execution_result_collector
+    class supervisor_review_application_service
+    class supervisor_stream_progress_service
+    class supervisor_task_facade
+    class supervisor_read_facade
+    class supervisor_read_query_factory
+    class hitl_gate_service
+    class supervisor_progress_publisher
+    class supervisor_execution_persistence_service
+    class supervisor_persistence_strategy_factory
+    class execution_consistency_coordinator
+    class supervisor_execution_state_loader
+    class supervisor_exception_translator
+    class supervisor_fallback_invoke_service
+    class supervisor_graph_execution_service
+    class supervisor_execution_summary_emitter
+    class supervisor_handoff_progress_support
+    class supervisor_output_event_support
+  }
+
+  package "service.agent" {
+    package "plan" {
+      interface SupervisorPlanningService
+      class LlmSupervisorPlanningService
+    }
+    package "invoke" {
+      interface A2AInvocationService
+      class DefaultA2AInvocationService
+      class A2AClientRegistry
+      class DownstreamAgentCardCache
+    }
+    package "handoff" {
+      interface HandoffPolicyService
+      class DefaultHandoffPolicyService
+    }
+    package "compose" {
+      interface SupervisorResponseComposeService
+      class LlmSupervisorResponseComposeService
+      class ComposeOutcomeAnalyzer
+      class ComposePromptBuilder
+      class A2uiDecisionParser
+    }
+    package "a2ui.product" {
+      class DefaultSupervisorProductInfoA2uiService
+      class ProductPayloadExtractor
+      class ProductA2uiDataMapper
+      class ProductA2uiMessageBuilder
+    }
+    package "graph" {
+      interface SupervisorStateGraphFactory
+      class LangGraphSupervisorStateGraphFactory
+      class SupervisorGraphStateMapper
+      class SupervisorGraphInputBuilder
+      class SupervisorBatchExecutionPolicy
+      class SupervisorPlanRunner
+    }
+    package "read" {
+      interface SupervisorReadQuery
+      class ExecutionRestoreReadQuery
+      class TaskReadModelQuery
+      class ReviewReadQuery
+      class SnapshotVerificationQuery
+    }
+    package "hitl" {
+      interface HitlDecisionService
+      class DefaultHitlDecisionService
+    }
+    package "swarm" {
+      interface SupervisorSwarmCoordinator
+      class DefaultSupervisorSwarmCoordinator
+    }
+    package "persistence" {
+      interface SupervisorPersistenceStrategy
+      abstract class AbstractSupervisorPersistenceStrategy
+      class ReviewOpenPersistenceStrategy
+      class ApprovedResumePersistenceStrategy
+      class ExecutionCompletionPersistenceStrategy
+    }
+    package "a2ui" {
+      interface SupervisorA2uiService
+      interface A2uiComposePromptProvider
+    }
+    package "runtime" {
+      interface SupervisorLlmRuntime
+      class DefaultSupervisorLlmRuntime
+      interface SupervisorChatGateway
+      class ReflectionSupervisorChatGateway
+    }
+    package "store" {
+      interface ConversationStore
+      interface GraphCheckpointStore
+      interface SupervisorSwarmStateStore
+      interface SupervisorReviewStore
+      interface ReviewedExecutionSnapshotStore
+    }
+  }
+
+  package "a2a" {
+    class A2AJsonRpcClient
+    class A2ARequestMapper
+    class A2AResponseMapper
+  }
+
+  package "a2a.lifecycle" {
+    class SupervisorA2aLifecycleService
+  }
+
+  package "a2a.idempotency" {
+    class SupervisorRequestIdempotencyService
+  }
+
+  package "model" {
+    class SupervisorAgentRequest
+    class SupervisorExecutionRequest
+    class SupervisorGraphSnapshot
+    class SupervisorPlanningDecision
+    class HandoffPolicyContext
+    class InvocationPolicyContext
+    class SupervisorOutputEvent
+    class SupervisorOutputEventType
+    class SupervisorPlanningContext
+    class SwarmState
+    class HitlPolicyResult
+    class HitlReviewTicket
+    class ReviewedExecutionSnapshot
+    class ConsistencyWriteResult
+    class RoutingPlan
+    class DownstreamCallResult
+    class HandoffDirective
+    class HandoffValidationResult
+    class SupervisorGraphState
+    class SupervisorRuntimeState
+  }
+
+  package "exception" {
+    class A2ARoutingException
+    class DownstreamA2AException
+    class SupervisorChatProcessingException
+  }
+}
+
+note bottom
+Rules
+- api endpoint는 JSON-RPC/SSE 입구와 params 검증만 담당한다
+- supervisor_agent_service는 use case orchestration만 담당한다
+- hitl_gate_service는 planner의 `review_required` 분기와 review lifecycle을 담당한다
+- supervisor_execution_service는 실행 가능한 요청의 send/stream/resume 경계를 담당한다
+- supervisor_execution_result_collector는 sync/resume payload와 stream progress 경계를 분리한다
+- supervisor_review_application_service는 review approve/cancel use case를 담당한다
+- supervisor_stream_progress_service는 stream 시작부 HITL progress event를 담당한다
+- supervisor_task_facade는 task read model 조회와 결과 view 조립을 캡슐화한다
+- supervisor_read_facade는 Redis read 단일 진입점 facade를 담당한다
+- supervisor_read_query_factory는 read intent에 맞는 query handler를 선택한다
+- supervisor_execution_persistence_service는 Redis write 단일 진입점 facade를 담당한다
+- supervisor_persistence_strategy_factory는 persistence command에 맞는 strategy를 선택한다
+- abstract_supervisor_persistence_strategy는 공통 validate/write/recovery template를 담당한다
+- execution_consistency_coordinator는 strategy 내부에서 task/review/checkpoint/swarm/snapshot 쓰기 순서와 보정 규칙을 캡슐화한다
+- supervisor_progress_publisher는 사용자 progress 발행과 swarm event log 기록의 단일 경로를 담당한다
+- supervisor_execution_state_loader는 restore read 요청 조립을 담당한다
+- supervisor_exception_translator는 supervisor 예외를 표준 오류 코드와 메시지로 정규화한다
+- supervisor_fallback_invoke_service는 graph 결과가 비어 있을 때 fallback invoke를 담당한다
+- supervisor_graph_execution_service는 graph 실행 준비와 context 복원을 담당한다
+- supervisor_execution_summary_emitter는 graph completion/routing/invocation summary 출력을 담당한다
+- supervisor_handoff_progress_support는 handoff progress metadata 조립을 담당한다
+- supervisor_output_event_support는 내부 typed event를 외부 string stream 계약으로 직렬화한다
+- reviewed_execution_snapshot_store는 review 대상 실행 입력과 resume token/version을 immutable하게 저장한다
+- execution_restore_read_query는 history/swarm/checkpoint/snapshot restore read를 담당한다
+- task_read_model_query는 task get/list read를 담당한다
+- review_read_query는 review get/decide lookup을 담당한다
+- snapshot_verification_query는 approved resume snapshot 검증 read를 담당한다
+- supervisor_graph_state_mapper는 graph state와 도메인 타입 간 변환을 담당한다
+- supervisor_graph_input_builder는 graph 시작 입력을 typed snapshot 기반으로 조립한다
+- supervisor_batch_execution_policy는 graph invoke batch 선택 규칙을 담당한다
+- supervisor_plan_runner는 graph batch 실행과 resilience 규칙을 담당한다
+- compose_outcome_analyzer는 downstream 결과를 compose outcome으로 요약한다
+- compose_prompt_builder는 compose/a2ui prompt 조립을 담당한다
+- a2ui_decision_parser는 compose 단계의 A2UI selection JSON 파싱을 담당한다
+- 내부 supervisor stream은 SupervisorOutputEvent 기반으로 유지하고, 외부 transport 직전만 문자열로 변환한다
+- endpoint는 service가 반환한 SupervisorOutputEvent를 SSE event/data로 매핑하는 마지막 transport adapter 역할만 담당한다
+- planner review 판단 오류는 fail-open이 아니라 review-required 또는 reject로 수렴한다
+- review approve는 raw request 재실행이 아니라 immutable snapshot resume만 허용한다
+- task는 lifecycle source of truth이고 review/checkpoint/swarm/snapshot은 task_id+state_version에 종속된다
+- Redis read는 `supervisor_read_facade -> query_factory -> query` 경계로만 진입한다
+- sync/resume 결과 저장은 TEXT/A2UI/RAW_DATA/ERROR_SUMMARY 채널만 허용하고 progress/reasoning은 저장 금지다
+- orchestrator progress는 task_id/session_id/node_type 문맥을 포함해 publisher로 전달한다
+- Graph node는 상태 전이만 담당하고, batch 실행 세부는 policy/runner로 분리한다
+- Fallback invoke도 graph와 동일한 batch policy/runner를 재사용한다
+- HITL/handoff 정책은 typed context 입력 모델을 통해 primitive 전달을 줄인다
+- invocation 경계도 typed context 입력 모델을 통해 primitive 전달을 줄인다
+- REVISE decision과 추가정보 수집은 별도 application service와 typed amendment/precondition model로 확장한다
+- default_supervisor_product_info_a2ui_service는 product A2UI use case facade를 담당한다
+- product_payload_extractor는 product payload shape 복원과 추출을 담당한다
+- product_a2ui_data_mapper는 product 도메인 데이터를 rendering model로 정규화한다
+- product_a2ui_message_builder는 rendering model을 A2UI protocol message로 조립한다
+- orchestrator는 graph 실행과 상위 coordination을 담당한다
+- Graph 내부에서 planning/invoke/handoff를 수행하고 compose는 graph 외부에서 수행한다
+- 하위 agent 연동은 오직 A2A(JSON-RPC/SSE) 경계로 처리한다
+- A2UI는 compose 결과 이후 선택적으로 부착된다
+- Swarm coordinator는 store 직접 노출 대신 rule/event mutation을 캡슐화한다
+end note
+@enduml

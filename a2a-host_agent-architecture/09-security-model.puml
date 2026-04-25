@@ -1,0 +1,79 @@
+@startuml
+!pragma layout smetana
+title 09. Supervisor Agent Security Model (Python runtime)
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+rectangle "Input Guard" {
+  [supervisor_a2a_endpoint] as Controller
+  [supervisor_a2a_request_validator] as Validator
+  [prompt_injection_guard] as PromptGuard
+}
+
+rectangle "Task / Review Ownership Guard" {
+  [supervisor_agent_service] as Service
+  [supervisor_a2a_lifecycle_service] as Lifecycle
+  [hitl_decision_service] as HitlDecision
+}
+
+rectangle "Routing & Invocation Guard" {
+  [A2AClientRegistry] as Registry
+  [Allowed Route Config] as Allowlist
+  [default_a2a_invocation_service] as Invoker
+  [handoff_policy_service] as HandoffPolicy
+  [Allowed Method Guard] as MethodGuard
+  [Streaming Capability Guard] as StreamGuard
+  [Retry/Timeout Policy] as RetryTimeout
+  [Circuit Breaker] as CircuitBreaker
+}
+
+rectangle "State Integrity" {
+  [supervisor_swarm_coordinator] as SwarmCoordinator
+  [Swarm State Version Check] as SwarmVersion
+  [Review Store] as ReviewStore
+}
+
+rectangle "Error Safety" {
+  [supervisor_exception_handler] as ErrorHandler
+}
+
+Controller --> Validator : method/params/schema
+Controller --> PromptGuard : sanitize message text
+Validator --> Service : normalize text/A2UI userAction
+Service --> Lifecycle : session-owned task read/cancel/list
+Service --> HitlDecision : session-owned review get/decide
+Invoker --> Registry : resolve target
+Registry --> Allowlist : validate agent key / endpoint / method
+Invoker --> RetryTimeout : bounded retry/backoff
+Invoker --> CircuitBreaker : fail-fast on repeated errors
+HandoffPolicy --> MethodGuard : allowMethods check
+HandoffPolicy --> StreamGuard : downstream stream support check
+SwarmCoordinator --> SwarmVersion : optimistic lock + retry
+HitlDecision --> ReviewStore : session-bound review ownership
+ErrorHandler --> Invoker : sanitize runtime failures
+
+note right of Validator
+Current input handling
+- legacy messageText
+- v1.0 message.parts[].text
+- application/json+a2ui userAction
+- invalid decision values rejected before service
+end note
+
+note right of HandoffPolicy
+Current handoff hardening
+- feature flag
+- route allowlist only
+- method allowlist only
+- recent path duplicate block
+- max hops
+end note
+
+note bottom of ErrorHandler
+No sensitive leak
+- internal stack traces
+- downstream raw HTTP details
+- credentials / provider internals
+end note
+@enduml

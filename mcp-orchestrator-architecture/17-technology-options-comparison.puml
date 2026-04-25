@@ -1,0 +1,11 @@
+@startuml
+title 17. Technology Options Comparison
+
+rectangle "Option A\nMinimal FastAPI + provider SDK" as A
+rectangle "Option B\nFastAPI + LangChain" as B
+rectangle "Option C\nPython + LangChain + LangGraph + MCP + A2A + Redis\n(Target Full Stack)" as C
+
+A --> C
+B --> C
+
+@enduml

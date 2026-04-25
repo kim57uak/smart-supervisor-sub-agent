@@ -1,0 +1,71 @@
+@startuml
+!pragma layout smetana
+title 05. Supervisor Agent LangGraph Orchestration
+
+skinparam shadowing false
+skinparam linetype ortho
+skinparam ActivityDiamondFontSize 12
+
+start
+
+:Build running context;
+:Call planner for routing + review decision;
+if (planner says review required?) then (yes)
+  :Freeze planner result for review;
+  :Create immutable reviewed execution snapshot;
+  :create WAITING_REVIEW task;
+  :open review ticket;
+  stop
+endif
+
+:Mark RUNNING task via persistence facade;
+:Load reviewed execution snapshot + history/checkpoint/swarm via ExecutionStateLoader -> ReadFacade;
+:Build typed graph input via SupervisorGraphInputBuilder;
+:Invoke CompiledGraph;
+
+:SELECT node;
+if (routing plan exists?) then (yes)
+  :INVOKE node;
+  :record invocation batch to SwarmState;
+  :HANDOFF_EVALUATE node;
+  if (accepted handoff exists?) then (yes)
+    :HANDOFF_APPLY node;
+  else (no)
+    :keep original routing queue;
+  endif
+  :MERGE node;
+  if (more plans?) then (yes)
+    :loop back to SELECT;
+  endif
+else (no)
+endif
+
+:COMPOSE node entered;
+:<back:FFE7A8>Compose outside graph;
+note right
+<size:10>CallLLM</size>
+end note
+:Emit graph/routing summary via SummaryEmitter;
+:Collect final result channels via ExecutionResultCollector (sync/resume only);
+:Persist task/review/checkpoint/swarm via ConsistencyCoordinator + PersistenceService;
+
+stop
+
+note right
+Current graph contract
+- nodes: select, invoke, handoff_evaluate, handoff_apply, merge, compose
+- no HITL wait node inside graph
+- planner decides `review_required` and builds routing queue before graph invoke
+- planner is outside graph; graph never calls planner directly
+- select -> (invoke | compose)
+- invoke batch size is bounded by execution.maxConcurrency
+- max iteration guard exists
+- handoff is feature-flagged and policy-validated
+- graph input assembly is outside graph
+- summary/progress publish is outside graph
+- missing/invalid `review_required` is fail-closed and never downgrades to auto-pass
+- review approve resumes reviewed snapshot with frozen routing plan, not raw request re-run
+- direct execution and approved resume both enter graph at ROUTING_SELECTED
+- progress/reasoning remain stream-only and are excluded from persisted result payload
+end note
+@enduml

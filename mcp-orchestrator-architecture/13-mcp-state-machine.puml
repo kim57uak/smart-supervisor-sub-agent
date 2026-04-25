@@ -1,0 +1,19 @@
+@startuml
+title 13. MCP State Machine
+
+skinparam shadowing false
+
+[*] --> received
+received --> validated
+validated --> planned
+planned --> executing
+executing --> composing
+composing --> completed
+executing --> failed
+composing --> failed
+
+note right of validated
+- key = session_id + scope + method + request_id + request_hash
+end note
+
+@enduml

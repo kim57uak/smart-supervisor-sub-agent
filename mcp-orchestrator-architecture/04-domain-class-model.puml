@@ -1,0 +1,68 @@
+@startuml
+title 04. Domain Class Model (Python target implementation baseline)
+
+skinparam shadowing false
+
+class AgentChatRequest {
+  +session_id: str
+  +request_id: str
+  +trace_id: str
+  +scope_name: str
+  +user_message: str
+}
+
+class PlanningContext {
+  +request: AgentChatRequest
+  +history: list[str]
+  +tool_plans: list[ToolPlan]
+}
+
+class ToolPlan {
+  +tool_name: str
+  +arguments: dict
+}
+
+class ToolExecutionResult {
+  +tool_name: str
+  +success: bool
+  +payload: dict
+}
+
+class AgentExecutionResult {
+  +raw_data: dict
+  +compose_result: str
+}
+
+interface planning_service {
+  +plan(context): list[ToolPlan]
+}
+
+interface tool_execution_service {
+  +execute(context): PlanningContext
+}
+
+interface response_compose_service {
+  +stream_compose(context): AsyncIterator[AiChatChunk]
+}
+
+interface conversation_store {
+  +load(session_id): list[str]
+  +save(session_id, history): void
+}
+
+interface graph_checkpoint_store {
+  +load(session_id): AgentGraphState
+  +save(session_id, state): void
+}
+
+interface a2a_task_store {
+  +get(task_id, scope_name): A2ATaskSnapshot
+  +mark_running(task_id, scope_name): A2ATaskSnapshot
+  +mark_completed(task_id, scope_name, response_payload): A2ATaskSnapshot
+}
+
+AgentChatRequest --> PlanningContext
+PlanningContext --> ToolPlan
+PlanningContext --> ToolExecutionResult
+
+@enduml

@@ -1,0 +1,118 @@
+@startuml
+!pragma layout smetana
+title 01. A2A Supervisor Agent System Context (Python runtime)
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+actor User
+
+rectangle "Client Channel" {
+  [Web UI / API Client] as Client
+}
+
+rectangle "Supervisor Agent (smart-supervisor)" {
+  [supervisor_a2a_endpoint] as supervisor_a2a_endpoint
+  [supervisor_a2a_request_validator] as supervisor_a2a_request_validator
+  [supervisor_agent_service] as supervisor_agent_service
+  [supervisor_request_idempotency_service] as supervisor_request_idempotency_service
+  [hitl_decision_service] as hitl_decision_service
+  [supervisor_execution_persistence_service] as supervisor_execution_persistence_service #F3F4F6
+  [supervisor_persistence_strategy_factory] as supervisor_persistence_strategy_factory
+  [execution_consistency_coordinator] as execution_consistency_coordinator
+  [supervisor_a2a_lifecycle_service\n(lifecycle policy / read model)] as supervisor_a2a_lifecycle_service #FFF4DB
+  [supervisor_agent_orchestrator] as supervisor_agent_orchestrator #F3F4F6
+  [LangGraph CompiledGraph] as langgraph_compiled_graph #DCEBFF
+  [supervisor_planning_service] as supervisor_planning_service
+  [a2a_invocation_service] as a2a_invocation_service
+  [handoff_policy_service] as handoff_policy_service
+  [supervisor_swarm_coordinator] as supervisor_swarm_coordinator
+  [supervisor_response_compose_service] as supervisor_response_compose_service #FDE7C7
+  [supervisor_a2ui_service] as supervisor_a2ui_service
+  [default_supervisor_llm_runtime] as default_supervisor_llm_runtime
+  [a2a_client_registry] as a2a_client_registry
+  [supervisor_exception_handler] as supervisor_exception_handler
+}
+
+database "Stores / Redis or InMemory" as Stores {
+  [Conversation Store] as ConversationStore #D9F7E8
+  [Graph Checkpoint Store] as CheckpointStore #FFD9E2
+  [Swarm State Store] as SwarmStateStore #E7D9FF
+  [Review Store] as ReviewStore
+  [Task Store] as TaskStore
+  [Execution Snapshot Store] as ExecutionSnapshotStore
+}
+
+cloud "Downstream A2A Agents" {
+  [Domain Agent A2A 1] as ProductAgent
+  [Domain Agent A2A 2] as ReservationAgent
+}
+
+artifact "settings/app.yml / settings/supervisor.yml / settings/supervisor-hitl.yml" as Config
+
+User --> Client
+Client --> supervisor_a2a_endpoint : /a2a/supervisor\nJSON-RPC + SSE
+supervisor_a2a_endpoint --> supervisor_a2a_request_validator
+supervisor_a2a_endpoint --> supervisor_agent_service
+supervisor_a2a_endpoint --> supervisor_exception_handler
+supervisor_agent_service --> supervisor_request_idempotency_service
+supervisor_agent_service --> hitl_decision_service
+supervisor_agent_service --> supervisor_execution_persistence_service
+supervisor_agent_service --> supervisor_a2a_lifecycle_service
+supervisor_agent_service --> supervisor_agent_orchestrator
+supervisor_agent_service --> supervisor_planning_service
+hitl_decision_service --> supervisor_execution_persistence_service
+supervisor_a2a_lifecycle_service --> supervisor_execution_persistence_service
+supervisor_execution_persistence_service --> supervisor_persistence_strategy_factory
+supervisor_persistence_strategy_factory --> execution_consistency_coordinator
+supervisor_agent_orchestrator -[#4C8BF5]-> langgraph_compiled_graph
+langgraph_compiled_graph --> a2a_invocation_service
+langgraph_compiled_graph --> handoff_policy_service
+langgraph_compiled_graph --> supervisor_swarm_coordinator
+supervisor_agent_orchestrator -[#E3A23B]-> supervisor_response_compose_service
+supervisor_response_compose_service --> supervisor_a2ui_service
+supervisor_planning_service --> default_supervisor_llm_runtime
+supervisor_response_compose_service --> default_supervisor_llm_runtime
+a2a_invocation_service --> a2a_client_registry
+a2a_client_registry --> Config
+a2a_invocation_service --> ProductAgent
+a2a_invocation_service --> ReservationAgent
+supervisor_agent_orchestrator --> supervisor_execution_persistence_service
+execution_consistency_coordinator --> TaskStore
+execution_consistency_coordinator --> ReviewStore
+execution_consistency_coordinator --> CheckpointStore
+execution_consistency_coordinator --> SwarmStateStore
+execution_consistency_coordinator --> ExecutionSnapshotStore
+
+note right of supervisor_agent_service
+Current request entry flow
+- validate + sanitize input
+- planner-backed `review_required` evaluation
+- planner review parse/runtime failure defaults to review-required or reject
+- create immutable reviewed execution snapshot before WAITING_REVIEW
+- create task state via lifecycle service
+- execute orchestrator only when review is not required
+- all Redis writes enter via persistence facade
+- lifecycle service does not write Redis directly
+- review APPROVE/CANCEL handled via tasks/review/* with snapshot token/version verification
+end note
+
+note right of supervisor_a2a_lifecycle_service
+Lifecycle boundary
+- task lifecycle policy and read model composition
+- no direct Redis write
+- persistence intent is delegated to facade
+- system context collapses persistence path behind facade for readability
+end note
+
+note right of supervisor_agent_orchestrator
+Current execution flow
+- load immutable execution snapshot + history/checkpoint/swarm
+- run LangGraph
+- invoke downstream A2A agents
+- evaluate/apply handoff
+- compose text or A2UI response
+- emit typed output events
+- persist only final result channels to task state
+end note
+@enduml

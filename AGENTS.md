@@ -1,0 +1,1 @@
+@/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/AGENT.md

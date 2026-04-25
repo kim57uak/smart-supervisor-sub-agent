@@ -1,0 +1,45 @@
+@startuml
+!pragma layout smetana
+title 19. Python Agent Runtime Sequence
+
+skinparam shadowing false
+
+actor User
+participant "agent_endpoint" as Endpoint
+participant "agent_authorization_service" as AuthService
+participant "session_authorization_store" as AuthStore
+participant "ai_chat_service" as ChatService
+participant "agent_orchestrator" as Orchestrator
+participant "LangGraph CompiledGraph" as StateGraph
+participant "tool_catalog_service" as ToolCatalog
+participant "llm_planning_service" as Planner
+participant "mcp_tool_execution_service" as Executor
+participant "response_compose_service" as Composer
+participant "agent_llm_runtime" as Runtime
+participant "mcp_tool_registry" as ToolRegistry
+
+User -> Endpoint : request(session_id, scope)
+Endpoint -> AuthService : assert_authorized(session_id, scope)
+AuthService -> AuthStore : find_by_session_id(session_id)
+AuthStore --> AuthService : SessionAuthorization
+AuthService --> Endpoint : ok
+Endpoint -> ChatService : stream_agent_chat(request)
+ChatService -> Orchestrator : execute(request)
+Orchestrator -> StateGraph : invoke(initial_state)
+StateGraph -> ToolCatalog : load_scoped_tools(scope)
+ToolCatalog -> ToolRegistry : load allowlisted tools only
+ToolRegistry --> ToolCatalog : scoped tool definitions
+StateGraph -> Planner : plan(context)
+Planner -[#FF6B6B]> Runtime : structured planning
+StateGraph -> Executor : execute(context)
+Executor -> ToolRegistry : prepare + call tools
+StateGraph --> Orchestrator : finalized context
+Orchestrator -> Composer : stream_compose(context)
+Composer -[#FF6B6B]> Runtime : stream final response
+Runtime -[#FF6B6B]--> Composer : AiChatChunk
+Composer --> Orchestrator : AiChatChunk
+Orchestrator --> ChatService : AiChatChunk
+ChatService --> Endpoint : stream
+Endpoint --> User : response
+
+@enduml

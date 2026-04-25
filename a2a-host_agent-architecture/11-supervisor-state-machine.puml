@@ -1,0 +1,92 @@
+@startuml
+!pragma layout smetana
+title 11A. Supervisor Review / Task Lifecycle
+
+skinparam shadowing false
+
+[*] --> REQUEST_RECEIVED
+REQUEST_RECEIVED --> HITL_EVALUATING
+HITL_EVALUATING --> PLAN_FROZEN_FOR_REVIEW : review required\n(or fail-closed review path)
+HITL_EVALUATING --> RUNNING : review not required
+PLAN_FROZEN_FOR_REVIEW --> WAITING_REVIEW : snapshot(versioned execution input) stored
+
+WAITING_REVIEW --> SNAPSHOT_VERIFIED : tasks/review/decide APPROVE
+WAITING_REVIEW --> CANCELED : tasks/review/decide CANCEL
+SNAPSHOT_VERIFIED --> RUNNING : resume_token + state_version + request_hash + frozen_plan_hash valid
+RUNNING --> COMPLETED
+RUNNING --> FAILED
+
+CANCELED --> [*]
+COMPLETED --> [*]
+FAILED --> [*]
+
+note right of WAITING_REVIEW
+This is review/task lifecycle state.
+It is outside the graph runtime state machine.
+Reviewed execution snapshot must already exist.
+end note
+
+note right of SNAPSHOT_VERIFIED
+Approval does not rebuild plan from raw request.
+Execution resumes from immutable reviewed snapshot.
+Resume entry point is ROUTING_SELECTED, not PLANNED.
+end note
+@enduml
+
+@startuml
+!pragma layout smetana
+title 11B. Supervisor Runtime Execution State Machine
+
+skinparam shadowing false
+
+[*] --> REQUEST_VALIDATED
+REQUEST_VALIDATED --> HISTORY_LOADED
+HISTORY_LOADED --> PLANNED
+PLANNED --> ROUTING_SELECTED
+HISTORY_LOADED --> ROUTING_SELECTED : approved snapshot resume\n(plans already frozen)
+ROUTING_SELECTED --> A2A_CALLING : plans exist
+ROUTING_SELECTED --> COMPOSING : no plan / max iteration reached
+
+A2A_CALLING --> HANDOFF_EVALUATING
+HANDOFF_EVALUATING --> HANDOFF_APPLIED : accepted handoff exists
+HANDOFF_EVALUATING --> HANDOFF_SKIPPED : none / rejected / flag disabled
+HANDOFF_APPLIED --> A2A_RESULT_MERGED
+HANDOFF_SKIPPED --> A2A_RESULT_MERGED
+A2A_RESULT_MERGED --> ROUTING_SELECTED : next plan exists
+A2A_RESULT_MERGED --> COMPOSING : all plans consumed
+COMPOSING --> COMPLETED
+COMPLETED --> [*]
+
+note right of REQUEST_VALIDATED
+SupervisorRuntimeState values:
+- REQUEST_VALIDATED
+- HISTORY_LOADED
+- PLANNED
+- ROUTING_SELECTED
+- A2A_CALLING
+- HANDOFF_EVALUATING
+- HANDOFF_APPLIED
+- HANDOFF_SKIPPED
+- A2A_RESULT_MERGED
+- COMPOSING
+- COMPLETED
+end note
+
+note right of HANDOFF_EVALUATING
+Policy checks
+- feature flag
+- route allowlist
+- method allowlist
+- stream support
+- max hops / recent path
+end note
+
+note bottom
+HITL waiting is not a graph runtime node.
+The runtime state machine starts only after execution is admitted.
+Approved snapshot resume skips PLANNED and starts from frozen routing queue.
+Planned P2 extensions:
+- REVISED
+- WAITING_FOR_USER_INPUT
+end note
+@enduml

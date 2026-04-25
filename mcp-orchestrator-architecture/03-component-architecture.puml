@@ -1,0 +1,97 @@
+@startuml
+title 03. Component Architecture (Python target implementation baseline)
+
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+package "Entry" {
+  [domain_endpoints] as domain_endpoints
+  [a2a_endpoints] as a2a_endpoints
+  [agent_card_endpoint] as agent_card_endpoint
+}
+
+package "Application" {
+  [agent_authorization_service] as agent_authorization_service
+  [ai_chat_service] as ai_chat_service
+  [agent_scope_resolver] as agent_scope_resolver
+  [agent_request_factory] as agent_request_factory
+  [agent_orchestrator] as agent_orchestrator
+  [tool_catalog_service] as tool_catalog_service
+  [a2a_lifecycle_service] as a2a_lifecycle_service
+  [a2a_channel_assembler] as a2a_channel_assembler
+  [a2a_response_mapper] as a2a_response_mapper
+}
+
+package "Ports" {
+  [planning_service] <<port>> as planning_service
+  [tool_execution_service] <<port>> as tool_execution_service
+  [response_compose_service] <<port>> as response_compose_service
+  [agent_llm_runtime] <<port>> as agent_llm_runtime
+  [conversation_store] <<port>> as conversation_store
+  [graph_checkpoint_store] <<port>> as graph_checkpoint_store
+  [a2a_task_store] <<port>> as a2a_task_store
+  [agent_graph_factory] <<port>> as agent_graph_factory
+}
+
+package "Infrastructure" {
+  [session_scope_authorization_service] as session_scope_authorization_service
+  [llm_planning_service] as llm_planning_service
+  [mcp_tool_execution_service] as mcp_tool_execution_service
+  [llm_response_compose_service] as llm_response_compose_service
+  [default_agent_llm_runtime] as default_agent_llm_runtime
+  [langgraph_agent_graph_factory] as langgraph_agent_graph_factory
+  [redis_conversation_store] as redis_conversation_store
+  [redis_graph_checkpoint_store] as redis_graph_checkpoint_store
+  [redis_a2a_task_store] as redis_a2a_task_store
+  [redis_store_facade] as redis_store_facade
+  [mcp_tool_registry] as mcp_tool_registry
+  [mcp_client_session_manager] as mcp_client_session_manager
+  [mcp_transport_factory] as mcp_transport_factory
+}
+
+domain_endpoints --> agent_scope_resolver
+domain_endpoints --> agent_request_factory
+domain_endpoints --> agent_authorization_service
+domain_endpoints --> ai_chat_service
+a2a_endpoints --> agent_scope_resolver
+a2a_endpoints --> agent_request_factory
+a2a_endpoints --> agent_authorization_service
+a2a_endpoints --> a2a_lifecycle_service
+a2a_endpoints --> ai_chat_service
+a2a_endpoints --> a2a_channel_assembler
+a2a_endpoints --> a2a_response_mapper
+agent_card_endpoint --> a2a_response_mapper
+
+session_scope_authorization_service ..> agent_authorization_service : implements
+ai_chat_service --> agent_orchestrator
+agent_orchestrator --> agent_graph_factory
+agent_orchestrator --> conversation_store
+agent_orchestrator --> graph_checkpoint_store
+agent_orchestrator --> a2a_lifecycle_service
+agent_orchestrator --> tool_catalog_service
+agent_orchestrator --> response_compose_service
+
+llm_planning_service ..> planning_service
+mcp_tool_execution_service ..> tool_execution_service
+llm_response_compose_service ..> response_compose_service
+default_agent_llm_runtime ..> agent_llm_runtime
+langgraph_agent_graph_factory ..> agent_graph_factory
+redis_conversation_store ..> conversation_store
+redis_graph_checkpoint_store ..> graph_checkpoint_store
+redis_a2a_task_store ..> a2a_task_store
+
+langgraph_agent_graph_factory --> planning_service
+langgraph_agent_graph_factory --> tool_execution_service
+llm_planning_service --> agent_llm_runtime
+mcp_tool_execution_service --> mcp_tool_registry
+llm_response_compose_service --> agent_llm_runtime
+a2a_lifecycle_service --> a2a_task_store
+redis_conversation_store --> redis_store_facade
+redis_graph_checkpoint_store --> redis_store_facade
+redis_a2a_task_store --> redis_store_facade
+mcp_tool_registry --> mcp_client_session_manager
+mcp_client_session_manager --> mcp_transport_factory
+
+@enduml

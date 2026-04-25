@@ -1,0 +1,56 @@
+@startuml
+!pragma layout smetana
+title 08. Supervisor Agent Exception Handling (Python runtime)
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+class supervisor_a2a_endpoint
+class supervisor_agent_service
+class supervisor_agent_orchestrator
+class llm_supervisor_planning_service
+class llm_supervisor_response_compose_service
+class default_a2a_invocation_service
+class A2AJsonRpcClient
+class supervisor_exception_handler
+
+class A2ARoutingException
+class DownstreamA2AException
+class SupervisorChatProcessingException
+class ChatProcessingException
+class HttpxHTTPError
+class JSONDecodeError
+class IllegalArgumentException
+class IllegalStateException
+
+supervisor_a2a_endpoint --> supervisor_agent_service
+supervisor_agent_service --> supervisor_agent_orchestrator
+supervisor_agent_service --> llm_supervisor_planning_service
+supervisor_agent_orchestrator --> llm_supervisor_response_compose_service
+supervisor_agent_orchestrator --> default_a2a_invocation_service
+default_a2a_invocation_service --> A2AJsonRpcClient
+
+default_a2a_invocation_service --> A2ARoutingException : invalid route / method
+A2AJsonRpcClient --> DownstreamA2AException : downstream A2A failure
+llm_supervisor_planning_service --> SupervisorChatProcessingException : plan/review parse failure
+llm_supervisor_response_compose_service --> SupervisorChatProcessingException : compose failure
+supervisor_agent_orchestrator --> IllegalStateException : state/persistence mismatch
+supervisor_a2a_endpoint --> IllegalArgumentException : validator / params
+supervisor_a2a_endpoint --> JSONDecodeError : invalid JSON
+A2AJsonRpcClient --> HttpxHTTPError : upstream HTTP failure
+
+supervisor_exception_handler --> ChatProcessingException : exception mapping
+supervisor_exception_handler --> RuntimeException : name-based mapping\nA2ARoutingException / DownstreamA2AException /\nSupervisorChatProcessingException
+supervisor_exception_handler --> IllegalArgumentException : exception mapping
+supervisor_exception_handler --> IllegalStateException : exception mapping
+supervisor_exception_handler --> HttpxHTTPError : exception mapping
+supervisor_exception_handler --> JSONDecodeError : exception mapping
+
+note bottom of supervisor_exception_handler
+Return sanitized response
+- /a2a/** -> JsonRpcResponse(error)
+- non-A2A -> ErrorResponse
+- no downstream raw body/header leak
+- many JSON-RPC validation errors are returned directly by endpoint/validator without throwing
+end note
+@enduml
