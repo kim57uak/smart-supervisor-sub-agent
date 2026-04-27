@@ -1,0 +1,103 @@
+host:
+  a2a:
+    # Supervisor 진입점에서 허용하는 전체 JSON-RPC method (legacy + v1.0)
+    method-allowlist:
+      # send message
+      - message/send
+      - SendMessage
+      # stream message
+      - message/stream
+      - SendStreamingMessage
+      # task operations
+      - tasks/get
+      - GetTask
+      - tasks/list
+      - ListTasks
+      - tasks/cancel
+      - CancelTask
+      # task events stream
+      - tasks/events
+      - TaskEvents
+      # review operations
+      - tasks/review/get
+      - tasks/review/decide
+      # agent card
+      - agent/card
+    # Supervisor -> downstream A2A agent 라우팅 설정
+    routing:
+      # Planning 단계에서 agentKey=product로 선택될 때 호출 대상
+      product:
+        # downstream A2A endpoint URL
+        endpoint: http://localhost:8082/a2a/product
+        # plan에 method가 없을 때 사용할 기본 JSON-RPC method
+        method: message/send
+        # agent별 호출 timeout(ms)
+        timeout-ms: 120000
+      # Planning 단계에서 agentKey=reservation로 선택될 때 호출 대상
+      reservation:
+        endpoint: http://localhost:8082/a2a/reservation
+        method: message/send
+        timeout-ms: 120000
+    # downstream 호출 재시도 정책
+    retry:
+      # 추가 재시도 횟수 (총 시도 횟수 = max-retries + 1)
+      max-retries: 0
+      # 재시도 첫 backoff(ms)
+      initial-backoff-ms: 500
+      # 지수 backoff 최대 상한(ms)
+      max-backoff-ms: 3000
+    # agent별 연속 실패 회로 차단 정책
+    circuit-breaker:
+      # 회로 차단기 사용 여부
+      enabled: true
+      # open 전까지 허용할 연속 실패 횟수
+      failure-threshold: 2
+      # 회로 open 유지 시간(ms)
+      open-duration-ms: 3000
+    # downstream 호출 공통 설정
+    invocation:
+      streaming-methods:
+        - message/stream
+        - SendStreamingMessage
+      default-method: message/send
+    # invoke 배치 실행 동시성 정책
+    execution:
+      # invoke 배치에서 동시에 실행할 최대 plan 개수 (1이면 순차)
+      max-concurrency: 2
+    # LLM 프롬프트에 주입할 대화 히스토리 정책
+    history:
+      # planning/compose에 포함할 최근 대화 턴 수(user+assistant 기준)
+      max-turns: 5
+    # Supervisor A2UI 렌더링 활성화 정책
+    a2ui:
+      # true일 때만 supervisor가 A2UI envelope/event 생성을 시도
+      enabled: true
+    # downstream handoff 지시 적용 정책
+    handoff:
+      # handoff directive 반영 여부
+      enabled: true
+      # 세션당 handoff 체인 최대 깊이
+      max-hops: 3
+      # 최근 N단계 경로에서 동일 agent 재진입 차단
+      block-same-agent-within-steps: 2
+      # handoff에서 허용할 JSON-RPC method allowlist (downstream 호출 전용)
+      allow-methods:
+        # legacy unary
+        - message/send
+        # v1 unary
+        - SendMessage
+        # legacy stream
+        - message/stream
+        # v1 stream
+        - SendStreamingMessage
+        # task operations (legacy + v1.0)
+        - tasks/get
+        - GetTask
+        - tasks/list
+        - ListTasks
+        - tasks/cancel
+        - CancelTask
+    # Supervisor SSE stream 응답 정책
+    stream:
+      # stream endpoint 전체 timeout(ms)
+      timeout-ms: 120000

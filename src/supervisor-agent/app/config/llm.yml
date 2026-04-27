@@ -1,0 +1,19 @@
+llm:
+  # 기본으로 사용할 제공자 (openai, google, anthropic 등)
+  provider: "openai"
+  
+  # 제공자별 설정
+  providers:
+    openai:
+      model: "gpt-5.4-mini"
+      temperature: 1.0
+    
+    google:
+      # Gemini 최신 리즈닝 모델
+      model: "gemini-3-flash"
+      temperature: 1.0
+    
+    gemma:
+      # Google의 오픈 리즈닝 모델 (제공자는 환경에 따라 google 또는 groq 등으로 연결 가능)
+      model: "gemma-4-9b-it"
+      temperature: 1.0

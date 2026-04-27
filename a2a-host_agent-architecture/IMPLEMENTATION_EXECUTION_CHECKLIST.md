@@ -1,5 +1,10 @@
 # Supervisor Implementation Execution Checklist
 
+> [!IMPORTANT]
+> **구현 폴더**: `/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/src/supervisor-agent`
+> **코드 분리 원칙**: 추후 별도 서버에서 구동할 예정이므로, **sub-agent와 코드를 공유하거나 참고해서는 절대 안 됩니다.** 소스가 엮이지 않도록 독립적으로 구현해야 합니다. (단, 파이썬 가상환경 폴더는 공유 가능합니다.)
+> **엔터프라이즈 환경 구성**: 엔터프라이즈 환경 구성을 위해 `/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/platform-runtime-enterprise-spec` 폴더의 문서들을 반드시 구현에 반영해야 합니다.
+
 Updated: 2026-04-25
 Scope baseline: `document/a2a-host_agent-architecture/20`, `26`, `29`, `31`, `32`, `06`, `19`
 
@@ -387,7 +392,7 @@ Scope baseline: `document/a2a-host_agent-architecture/20`, `26`, `29`, `31`, `32
 필요 작업:
 
 - `APPROVED_RESUME` strategy 정리
-- `ExecutionConsistencyCoordinator.startApprovedResume(...)` 구현 보강
+- `execution_consistency_coordinator.start_approved_resume(...)` 구현 보강
 - `WAITING_REVIEW -> RUNNING` CAS 구현
 - durable event stream 기준 `initial_cursor` 예약/확정 로직 추가
 
@@ -399,7 +404,7 @@ Scope baseline: `document/a2a-host_agent-architecture/20`, `26`, `29`, `31`, `32
 
 권장 coordinator 결과 객체:
 
-- `transitionAccepted`
+- `transition_accepted`
 - `task_id`
 - `state_version`
 - `execution_mode`
@@ -594,9 +599,9 @@ replay 비대상:
 ### State Transition Tests
 
 - valid approve -> `WAITING_REVIEW -> RUNNING`
-- duplicate approve -> `duplicateDecision`
+- duplicate approve -> `duplicate_decision`
 - cancel wins before approve -> later approve reject
-- terminal task approve -> `alreadyTerminal` or `TASK_STATE_INVALID`
+- terminal task approve -> `already_terminal` or `TASK_STATE_INVALID`
 
 ### Stream Resume Tests
 

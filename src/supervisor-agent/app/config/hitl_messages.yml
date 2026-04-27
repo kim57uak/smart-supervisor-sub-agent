@@ -1,0 +1,17 @@
+host:
+  a2a:
+    # HITL 판단 사유(reason code) -> 사용자 노출 문구 매핑
+    hitl:
+      reason-messages:
+        # 예약 생성 요청 감지
+        reservation_creation_request: "예약 생성 요청으로 판단되어 사용자 승인이 필요합니다."
+        # 일반 데이터 변경 요청 감지
+        data_mutation_detected: "데이터 변경 요청으로 판단되어 사용자 승인이 필요합니다."
+        # 의도 불명확 + 고위험
+        high_risk_unknown_intent: "요청 의도가 불명확하고 위험도가 높아 사용자 승인이 필요합니다."
+        # LLM risk 기반 검토 필요
+        llm_review_required: "요청 위험도를 고려해 사용자 승인이 필요하다고 판단했습니다."
+        # 조회성 요청(승인 불필요)
+        not_required_read_only: "조회성 요청으로 판단되어 승인이 필요하지 않습니다."
+        # 매핑되지 않은 code fallback
+        default: "요청 처리 전 사용자가 검토해야 하는 상황으로 판단되었습니다."
