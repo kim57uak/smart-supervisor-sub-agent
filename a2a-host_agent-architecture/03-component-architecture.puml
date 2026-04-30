@@ -17,12 +17,14 @@ package "application" {
   [supervisor_agent_service] as agent_service
   [supervisor_pre_hitl_a2ui_service] as pre_hitl_a2ui_service
   [hitl_gate_service] as hitl_gate_service
+  [task_queue_service] as task_queue_service #FFEBCF
   [supervisor_execution_service] as execution_service
   [supervisor_review_application_service] as review_app_service
-  [supervisor_stream_progress_service] as stream_progress_service
+  [supervisor_task_event_stream_service] as task_event_stream_service
   [supervisor_task_facade] as task_facade
   [supervisor_agent_orchestrator] as orchestrator #DCEBFF
   [supervisor_graph_execution_service] as graph_execution_service
+  [Background Worker\n(worker.py)] as background_worker #EFE1FF
   [supervisor_execution_result_collector] as result_collector
   [supervisor_execution_summary_emitter] as summary_emitter
   [supervisor_fallback_invoke_service] as fallback_invoke_service
@@ -129,8 +131,8 @@ supervisor_a2a_request_validator -[hidden]-> output_event_support
 pre_hitl_a2ui_service -[hidden]-> hitl_gate_service
 hitl_gate_service -[hidden]-> execution_service
 execution_service -[hidden]-> review_app_service
-review_app_service -[hidden]-> stream_progress_service
-stream_progress_service -[hidden]-> task_facade
+review_app_service -[hidden]-> task_event_stream_service
+task_event_stream_service -[hidden]-> task_facade
 
 graph_execution_service -[hidden]-> state_loader
 state_loader -[hidden]-> result_collector
@@ -211,7 +213,7 @@ agent_service --> pre_hitl_a2ui_service
 agent_service --> hitl_gate_service
 agent_service --> execution_service
 agent_service --> review_app_service
-agent_service --> stream_progress_service
+agent_service --> task_event_stream_service
 agent_service --> task_facade
 agent_service -[#D96C8C]-> IdempotencyService
 agent_service -[#2FA772]-> supervisor_execution_persistence_facade

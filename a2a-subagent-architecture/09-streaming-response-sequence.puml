@@ -1,0 +1,36 @@
+@startuml
+!pragma layout smetana
+title 09. Streaming Response Sequence (Decoupled & Event-driven)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Supervisor / User" as Client
+participant "stream.router" as API
+participant "AgentChatUseCase" as Usecase
+participant "AgentReader" as Reader
+database "Redis (RedisAdapter)" as Redis
+participant "WorkerExecutionService" as Worker
+participant "AgentExecutor" as Executor
+participant "LlmRuntime" as LLM
+
+Client -> API : GET /api/v1/stream/{task_id} (SSE)
+API -> Reader : get_task_status(task_id)
+Reader --> API : status=RUNNING
+
+loop until status=COMPLETED or FAILED
+    API -> Redis : XREAD (Subscribe to event_stream)
+    
+    note over Worker, LLM : Background Process
+    Worker -> Executor : execute
+    Executor -> LLM : astream(compose)
+    LLM --> Executor : token chunk
+    Executor -> Redis : publish (AiChatChunk)
+    
+    Redis --> API : stream event data
+    API --> Client : SSE event: data: { "chunk": "..." }
+end
+
+API --> Client : SSE event: data: { "status": "COMPLETED" }
+
+@enduml

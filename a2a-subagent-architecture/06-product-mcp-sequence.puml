@@ -1,0 +1,54 @@
+@startuml
+!pragma layout smetana
+title 06. Product MCP Sequence (Session Management)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor User
+participant "chat_endpoint" as API
+participant "chat_usecase" as Usecase
+database "Redis (Queue/Stream)" as Redis
+participant "worker" as Worker
+participant "agent_executor" as Executor
+participant "mcp_executor" as MCP
+participant "mcp_transport" as Transport
+
+User -> API : POST /api/v1/agent/sale-product/chat
+API -> Usecase : handle_chat_request(request)
+Usecase -> Redis : LPUSH (Enqueue Task)
+Usecase --> API : Accepted (task_id)
+API --> User : HTTP 202 (task_id)
+
+note over Worker, Transport : Background Execution
+Worker -> Redis : BRPOP (Dequeue Task)
+Worker -> Executor : execute
+Executor -> MCP : execute(plan)
+MCP -> Transport : get_session(server_name)
+Transport --> MCP : cached transport
+
+alt session_id is None
+    MCP -> Transport : call("initialize", {})
+    note right
+        Headers:
+        - Content-Type: application/json
+        - Accept: application/json, text/event-stream
+        - X-GUID: <uuid>
+        - User-Agent: Hanatour-SmartMCP/1.0
+    end note
+    Transport --> MCP : 200 OK\nMcp-Session-Id: <session_id>
+    MCP -> MCP : log("mcp_session_initialized")
+end
+
+MCP -> Transport : call("tools/call", params)
+note right
+    Headers:
+    - Mcp-Session-Id: <session_id>
+    - (other headers same as initialize)
+end note
+Transport --> MCP : 200 OK (SSE)\nevent:message\ndata: {result: {...}}
+MCP -> MCP : parse_sse_response
+MCP --> Executor : {status: "success", output: ...}
+Executor -> Redis : XADD (Progress Event)
+
+@enduml

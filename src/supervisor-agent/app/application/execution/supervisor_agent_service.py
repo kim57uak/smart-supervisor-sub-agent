@@ -1,127 +1,148 @@
-from typing import Dict, Any, Tuple
 import uuid
 import asyncio
+import structlog
+from typing import Dict, Any, Tuple, Optional
+
 from .hitl_gate_service import HitlGateService
 from .supervisor_graph_execution_service import SupervisorGraphExecutionService
+from .task_queue_service import TaskQueueService
 from ..read.supervisor_read_facade import SupervisorReadFacade
 from ..persistence.supervisor_execution_persistence_service import SupervisorExecutionPersistenceService
-from ...domain.enums import ReasonCode
+from ...domain.enums import ReasonCode, ProcessStatus, TaskState
+from ...core.config import settings
 
+logger = structlog.get_logger(__name__)
 
 class SupervisorAgentService:
     """
-    Main Application Service acting as Use Case brancher as per doc 30.
+    Main Application Service for Supervisor Agent.
+    Orchestrates the lifecycle of task execution using Decoupled Worker pattern.
     """
+
     def __init__(
         self,
         hitl_gate: HitlGateService,
         graph_execution: SupervisorGraphExecutionService,
         read_facade: SupervisorReadFacade,
-        persistence_facade: SupervisorExecutionPersistenceService
+        persistence_facade: SupervisorExecutionPersistenceService,
+        task_queue: TaskQueueService,
+        pre_hitl_a2ui: Any = None,
     ):
         self.hitl_gate = hitl_gate
         self.graph_execution = graph_execution
         self.read_facade = read_facade
         self.persistence_facade = persistence_facade
+        self.task_queue = task_queue
+        self.pre_hitl_a2ui = pre_hitl_a2ui
 
-    async def execute_task(self, session_id: str, message: str) -> Dict[str, Any]:
+    async def execute_task(
+        self, session_id: str, message: str, request_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Entry point for new task execution.
+        Flow: Idempotency -> HITL Check -> (Direct Answer / WAITING_REVIEW / Queue)
+        """
+        request_id = request_id or str(uuid.uuid4())
         task_id = str(uuid.uuid4())
-        request_id = str(uuid.uuid4())
         
-        # 1. HITL Gate Decision
+        # Contextual logging
+        log = logger.bind(session_id=session_id, request_id=request_id)
+
+        # 1. Idempotency Check
+        is_new, effective_task_id = await self.persistence_facade.strategy_factory.coordinator.check_and_reserve_request(
+            request_id, task_id
+        )
+        if not is_new:
+            log.info("duplicate_request_detected", task_id=effective_task_id)
+            return await self._get_duplicate_response(session_id, effective_task_id)
+
+        task_id = effective_task_id
+        log = log.bind(task_id=task_id)
+
+        # 2. HITL (Human-In-The-Loop) Decision
         review_required, plan = await self.hitl_gate.evaluate_and_open_review(
             task_id, session_id, request_id, {"message": message, "session_id": session_id}
         )
-        
+
+        # 3. Process result paths
         if review_required:
+            log.info("task_state_transition", to_state=ProcessStatus.WAITING_REVIEW.value)
             return {
                 "task_id": task_id,
-                "status": "WAITING_REVIEW",
-                "review_id": plan.trace_id,
-                "review_reason": getattr(plan, '_review_reason', '사용자 승인이 필요합니다.')
+                "status": ProcessStatus.WAITING_REVIEW.value,
+                "review_reason": getattr(plan, "review_reason", "사용자 승인이 필요합니다.")
             }
-        
-        # 2. Check if this is a direct_answer case (no downstream agents needed)
-        is_direct = plan.planner_metadata.get("direct_answer", False)
-        if is_direct or not plan.routing_queue:
-            # Fire & forget: stream LLM answer token-by-token via SSE
-            planner_reasoning = plan.planner_metadata.get("reasoning", "")
-            asyncio.create_task(self._stream_direct_answer(task_id, message, planner_reasoning))
-            
-            return {
-                "task_id": task_id,
-                "status": "STREAMING",
-                "stream_endpoint": f"/a2a/supervisor/stream"
-            }
-            
-        # 3. Downstream Execution (Fire & Forget via asyncio task for STREAM mode)
-        asyncio.create_task(self.graph_execution.execute_plan(task_id, plan))
-        
-        from ...core.config import settings
-        a2ui_enabled = settings.supervisor_config.get("a2ui", {}).get("enabled", False)
-        
-        return {
-            "task_id": task_id,
-            "status": "STREAMING",
-            "stream_endpoint": f"/a2a/supervisor/stream",
-            "a2ui_enabled": a2ui_enabled
-        }
 
-    async def _stream_direct_answer(self, task_id: str, message: str, planner_reasoning: str = ""):
-        """Background task: stream LLM direct answer via event publisher"""
-        event_publisher = self.graph_execution.event_publisher
-        compose_service = self.graph_execution.compose_service
-        
-        try:
-            # 1. Publish planner reasoning as reasoning event
-            if planner_reasoning:
-                await event_publisher.publish_reasoning(task_id, planner_reasoning)
-            
-            await event_publisher.publish_progress(task_id, "composing", {"message": "LLM 응답 생성 중..."})
-            
-            # 2. Stream token by token
-            async for event_type, token in compose_service.stream_compose(
-                [], context={"task_id": task_id, "message": message}
-            ):
-                if event_type == "reasoning":
-                    await event_publisher.publish_reasoning(task_id, token)
-                else:
-                    await event_publisher.publish_chunk(task_id, "supervisor", {"answer": token, "data": None})
-            
-            await event_publisher.publish_done(task_id, {"status": "completed"})
-            
-        except Exception as e:
-            await event_publisher.publish_error(task_id, {"error": str(e)})
+        if self._is_direct_answer(plan):
+            log.info("task_state_transition", mode="direct_answer_shortcut")
+            asyncio.create_task(
+                self.graph_execution.execute_direct_answer(
+                    session_id, task_id, {"message": message, "reasoning": plan.planner_metadata.get("reasoning", "")}
+                )
+            )
+            return self._build_accepted_response(session_id, task_id)
 
-    async def handle_review_decision(self, request: Any) -> Tuple[bool, Any, Any]:
-        """
-        Handles Review Decide Request.
-        """
-        # 1. Verify Snapshot via Read Facade
-        verification_result = await self.read_facade.verify_snapshot(request.task_id, {})
+        # 4. Default: Async Execution via Worker
+        log.info("task_state_transition", to_state=TaskState.RUNNING.value)
+        plan_data = plan.model_dump(mode="json") if hasattr(plan, "model_dump") else plan
+        await self.task_queue.enqueue_task(session_id, task_id, plan_data)
         
-        if not verification_result.is_allowed:
-            return False, verification_result.reason_code, None
+        return self._build_accepted_response(session_id, task_id)
+
+    async def handle_review_decision(self, request: Any) -> Tuple[bool, ReasonCode, Any]:
+        """Processes human review decisions (APPROVE/CANCEL)."""
+        session_id = request.session_id or "unknown"
+        task_id = request.task_id
+        log = logger.bind(session_id=session_id, task_id=task_id)
+
+        verification = await self.read_facade.verify_snapshot(
+            session_id, task_id, request.model_dump() if hasattr(request, "model_dump") else {}
+        )
+        if not verification.is_allowed:
+            log.warning("snapshot_verification_failed", reason=verification.reason_code)
+            return False, verification.reason_code, None
 
         if request.decision.value == "CANCEL":
-            # Simplified cancel logic
+            log.info("review_cancelled")
             return True, ReasonCode.SUCCESS, None
 
-        if request.decision.value == "APPROVE":
-            # 2. Persist Approved Resume via Persistence Facade (CAS logic)
-            snapshot = await self.read_facade.query_factory.get_query("snapshot_verification").snapshot_store.get_snapshot(request.task_id)
-            expected_version = snapshot.state_version
-            
-            resume_result = await self.persistence_facade.persist_approved_resume(request.task_id, expected_version)
-            
-            if not resume_result["success"]:
-                return False, resume_result["reason_code"], None
+        return await self._process_approval(session_id, task_id, log)
 
-            # 3. Resume Graph Execution asynchronously
-            asyncio.create_task(self.graph_execution.execute_plan(request.task_id, snapshot.frozen_plan))
-            
-            from ...core.config import settings
-            a2ui_enabled = settings.supervisor_config.get("a2ui", {}).get("enabled", False)
-            resume_result["a2ui_enabled"] = a2ui_enabled
-            
-            return True, ReasonCode.SUCCESS, resume_result
+    def _is_direct_answer(self, plan: Any) -> bool:
+        return plan.planner_metadata.get("direct_answer", False) or not plan.routing_queue
+
+    def _build_accepted_response(self, session_id: str, task_id: str) -> Dict[str, Any]:
+        return {
+            "task_id": task_id,
+            "session_id": session_id,
+            "status": ProcessStatus.STREAMING.value,
+            "stream_endpoint": f"{settings.api_prefix}/stream",
+            "a2ui_enabled": settings.a2a.a2ui_enabled,
+        }
+
+    async def _get_duplicate_response(self, session_id: str, task_id: str) -> Dict[str, Any]:
+        task_view = await self.read_facade.get_task_view(session_id, task_id)
+        return task_view or self._build_accepted_response(session_id, task_id)
+
+    async def _process_approval(self, session_id: str, task_id: str, log: Any) -> Tuple[bool, ReasonCode, Any]:
+        snapshot = await self.read_facade.get_snapshot(session_id, task_id)
+        if not snapshot:
+            return False, ReasonCode.SNAPSHOT_NOT_FOUND, None
+
+        resume_result = await self.persistence_facade.persist_approved_resume(
+            session_id, task_id, snapshot.state_version
+        )
+        
+        if not resume_result.get("success"):
+            reason = resume_result.get("reason_code", ReasonCode.EXECUTION_FAILURE)
+            if reason in [ReasonCode.DUPLICATE_DECISION, ReasonCode.DUPLICATE_DECISION.value]:
+                return True, ReasonCode.SUCCESS, resume_result
+            return False, reason, None
+
+        # Resume execution
+        plan_data = snapshot.frozen_plan.model_dump(mode="json") if hasattr(snapshot.frozen_plan, "model_dump") else snapshot.frozen_plan
+        await self.task_queue.enqueue_task(session_id, task_id, plan_data)
+        
+        log.info("review_approved_execution_resumed")
+        resume_result["a2ui_enabled"] = settings.a2a.a2ui_enabled
+        return True, ReasonCode.SUCCESS, resume_result

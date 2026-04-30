@@ -1,0 +1,40 @@
+@startuml
+!pragma layout smetana
+title 10. Exception Handling (Enterprise Error Model)
+
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+package "Exceptions (domain/exceptions.py)" {
+  class BaseAgentException {
+    +code: str
+    +message: str
+    +details: dict
+  }
+  class SecurityException extends BaseAgentException
+  class ValidationException extends BaseAgentException
+  class ExecutionException extends BaseAgentException
+  class InfrastructureException extends BaseAgentException
+}
+
+package "Application/API" {
+  [AgentChatUseCase] as usecase
+  [AgentExecutor] as executor
+  [agent_exception_handler] as translator
+}
+
+usecase --> SecurityException : Unauthorized/Forbidden
+usecase --> ValidationException : Invalid Request
+executor --> ExecutionException : Planning/Tool Fail
+executor --> InfrastructureException : Redis/LLM Down
+
+translator --> BaseAgentException : translate to A2A Error
+translator --> API : JSON-RPC error response
+
+note right of translator
+  Internal exceptions are translated
+  to standard A2A error formats (Document 10)
+  in main.py:agent_exception_handler
+end note
+
+@enduml

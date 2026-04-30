@@ -1,63 +1,25 @@
-# 28. Supervisor A2UI Architecture And Operating Model
+# 28. Supervisor A2UI Architecture & Operating Model
 
-Updated: 2026-04-25
-Current baseline: `src/app`
+Updated: 2026-04-28 (Refined implementation sync)
 
-## Purpose
+## A2UI Design Principles
 
-본 문서는 supervisor의 A2UI 역할, 생성 시점, 실패 처리, 운영 모델을 Python runtime 기준으로 정리한다.
+A2UI(Agent-to-UI)는 Supervisor 응답의 풍부함을 더하는 선택적 계층이다. 모든 A2UI는 기본 텍스트 응답을 동반해야 하며, UI 로딩 실패가 응답 전체의 실패로 이어지지 않아야 한다.
 
-## Positioning
+## Lifecycle Integration
 
-A2UI는 supervisor의 기본 응답을 대체하는 기능이 아니라, 사용자의 의사결정을 더 잘 돕기 위한 보조 표현 계층이다.
+### 1. Pre-HITL A2UI (Interactive Input)
+- **Phase**: 플래닝 직후, 워커 실행 전.
+- **Goal**: 하위 에이전트 실행에 필요한 추가 정보를 사용자로부터 구조화된 폼(Form)을 통해 수집한다.
+- **Behavior**: `PreHitlA2uiService`가 플랜의 힌트를 해석하여 적절한 `surfaceId`를 클라이언트에 전달한다.
 
-원칙:
+### 2. Post-Invoke Compose A2UI (Result Rendering)
+- **Phase**: 모든 하위 에이전트 실행 완료 후 합성(Compose) 단계.
+- **Goal**: 실행 결과를 단순 텍스트 이상으로 표현(예: 일정표, 상품 카드)한다.
+- **Behavior**: `LlmSupervisorResponseComposeService`가 결과 데이터를 기반으로 `a2ui` 이벤트를 발행한다.
 
-- text response는 항상 기본값으로 유지한다.
-- A2UI는 선택적으로 추가된다.
-- A2UI 실패가 supervisor 전체 응답 실패로 전파되면 안 된다.
+## Security & Reliability
 
-## Two A2UI Phases
-
-### 1. Pre-HITL A2UI
-
-- downstream invoke보다 먼저 발생할 수 있다.
-- waiting review나 execution 대신 먼저 응답을 종료할 수 있다.
-- 데이터 변경을 직접 수행하지 않는다.
-
-### 2. Post-Invoke Compose A2UI
-
-- compose 결과의 일부로 생성된다.
-- text `compose-result`와 함께 유지한다.
-- raw payload를 그대로 노출하지 않고 정규화된 view model을 사용한다.
-
-## Generic Onboarding Rule
-
-supervisor의 기본 확장 경로는 아래다.
-
-1. `supervisor.yml`에 downstream agent 등록
-2. registry가 agent를 인식
-3. agent card를 읽어 capability를 해석
-4. planner/routing/invocation은 추가 코드 없이 동작
-
-## Adapter Exception Rule
-
-예외적으로 domain adapter를 허용하는 범위:
-
-- downstream raw payload shape가 과도하게 다양해 generic normalization이 불안정한 경우
-- 표준 field mapping만으로는 일정표, 예약 seed, 판매상품 생성 form 같은 UI를 안정적으로 만들기 어려운 경우
-
-이 adapter는 optional presentation extension이어야 하며, 신규 agent 기본 등록 메커니즘이 되어서는 안 된다.
-
-## Fallback Rules
-
-A2UI 실패는 아래 중 하나로 수렴해야 한다.
-
-- text response only
-- text response + minimal metadata
-
-금지 규칙:
-
-- A2UI 실패 때문에 `compose-result`까지 같이 소실되는 구조
-- 사용자에게 raw parser error를 노출하는 구조
-- A2UI가 없으면 설명 가능한 답변도 못 주는 구조
+- **Data Sanitization**: A2UI 페이로드에 포함되는 모든 데이터는 `PromptInjectionGuard` 및 도메인 정규화기를 거쳐 안전하게 전달된다.
+- **Graceful Fallback**: 클라이언트가 특정 A2UI 스펙을 지원하지 않거나 렌더링에 실패하더라도, 텍스트 응답 채널을 통해 핵심 정보 전달이 보장된다.
+- **Separation of Concerns**: 비즈니스 로직(Worker)은 데이터만 생성하고, UI 구조화는 전용 서비스와 어댑터가 담당한다.

@@ -1,74 +1,51 @@
 # 20. Supervisor Routing Package / Class Spec
 
-Updated: 2026-04-25
-Source baseline: `settings/supervisor.yml`, `settings/supervisor-system-prompt.yml`
+Updated: 2026-04-28 (Implementation Refined)
+Source baseline: `settings/supervisor.yml`, `src/app`
 
 ## Scope
 
-- supervisor 진입점은 단일 endpoint 계열을 사용한다.
-- supervisor는 downstream agent 호출을 `a2a_invocation_service`를 통해서만 수행한다.
-- supervisor는 아래 공통 런타임 규칙을 자체적으로 유지한다.
-  - `legacy + v1.0` method compatibility
-  - idempotency
-  - correlation key propagation
-  - Redis TTL `30분`
-  - prompt/endpoint 하드코딩 금지
-- LLM provider 연결 정보는 settings에서만 관리하고 별도 MCP/tool 설정은 두지 않는다.
+- **Decoupled Architecture**: API(FastAPI)와 Worker(Background)를 분리하여 운영한다.
+- **Reliable Invocation**: 모든 downstream 호출은 `a2a_invocation_service`를 거치며 서킷 브레이커와 재시도를 자동 적용한다.
+- **Consistency First**: 모든 상태 전이는 `ExecutionConsistencyCoordinator`를 통해 원자적(Atomic)으로 처리한다.
+- **Idempotency**: Redis `SET NX` 기반의 분산 락을 통해 중복 실행을 방지한다.
 
 ## Runtime Flow
 
-1. `supervisor_a2a_endpoint`가 JSON-RPC envelope를 수신한다.
-2. `supervisor_a2a_request_validator`가 허용 method와 요청 형식을 검증한다.
-3. `supervisor_request_idempotency_service`가 재전송 여부를 판단한다.
-4. `supervisor_agent_service`가 request를 `supervisor_execution_request`로 정규화한다.
-5. pre-HITL A2UI 대상이면 즉시 `A2UI` 응답을 반환할 수 있다.
-6. `hitl_gate_service`가 `supervisor_planning_service.plan(...)`을 호출해 routing + review_required를 함께 판단한다.
-7. reviewable execution이면 planner 결과를 freeze해 승인 대상 실행 계획으로 확정한다.
-8. 검토가 필요하면 review task를 생성하고 `WAITING_REVIEW` 상태를 반환한다.
-9. 검토가 불필요하면 `supervisor_execution_service`가 orchestration을 시작한다.
-10. `supervisor_agent_orchestrator`가 LangGraph supervisor graph를 실행한다.
-11. `supervisor_plan_runner`가 `a2a_invocation_service`를 통해 downstream agent를 호출한다.
-12. `supervisor_response_compose_service`가 downstream 결과를 바탕으로 최종 응답과 필요 시 A2UI envelope를 생성한다.
+1. **Submission Phase (API Tier)**:
+   - `supervisor_a2a_endpoint`가 요청 수신.
+   - `validator`가 스키마 및 메서드 허용 여부 체크.
+   - `consistency_coordinator`가 `request_id` 기반 멱등성 선점.
+   - `hitl_gate_service`가 플래닝 및 리뷰 필요성 평가.
+   - 리뷰 불필요 시 `task_queue_service`에 작업 적재 후 즉시 `STREAMING` 응답.
 
-## Core Components
+2. **Execution Phase (Worker Tier)**:
+   - `worker.py`가 Redis Queue에서 작업 추출.
+   - `supervisor_graph_execution_service`가 실행 문맥 복원 및 LangGraph 실행.
+   - `invocation_service`가 downstream agent 호출.
+   - `progress_publisher`가 Redis Stream에 실시간 진행 상태 발행.
+   - `compose_service`가 결과를 합성하고 최종 완료 처리.
 
-- `supervisor_a2a_endpoint`
-- `supervisor_a2a_request_validator`
-- `supervisor_agent_service`
-- `supervisor_request_idempotency_service`
-- `hitl_gate_service`
-- `supervisor_execution_service`
-- `supervisor_review_application_service`
-- `supervisor_task_facade`
-- `supervisor_agent_orchestrator`
-- `supervisor_planning_service`
-- `a2a_invocation_service`
-- `handoff_policy_service`
-- `supervisor_swarm_coordinator`
-- `supervisor_response_compose_service`
-- `supervisor_a2ui_service`
-- `supervisor_progress_publisher`
-- `supervisor_execution_persistence_service`
-- `execution_consistency_coordinator`
-- `reviewed_execution_snapshot_store`
+## Core Components (Actual Class Names)
+
+- **`SupervisorAgentService`**: API 유즈케이스 진입점.
+- **`WorkerExecutionService`**: 워커 루프 및 작업 실행 관리.
+- **`ExecutionConsistencyCoordinator`**: Redis CAS 기반 일관성 제어기.
+- **`SupervisorGraphExecutionService`**: 그래프 실행 오케스트레이터.
+- **`LangGraphSupervisorStateGraphFactory`**: LangGraph 정의 및 컴파일.
+- **`DefaultA2AInvocationService`**: A2A 통신 및 탄력성(Resilience) 처리.
+- **`SnapshotVerificationQuery`**: 승인 전 무결성 검증 쿼리.
+- **`PromptInjectionGuard`**: 보안 필터링 서비스.
 
 ## Core Contracts
 
-- `supervisor_planning_service.plan(context) -> SupervisorPlanningDecision`
-- `a2a_invocation_service.invoke(context) -> DownstreamCallResult`
-- `handoff_policy_service.evaluate(result, context) -> list[HandoffValidationResult]`
-- `supervisor_response_compose_service.stream_compose_events(context) -> AsyncIterator[SupervisorOutputEvent]`
-- `supervisor_a2ui_service.build(context, selected_view, message) -> A2uiRenderResult | None`
-- `supervisor_request_idempotency_service.execute(request, action)`
-- `supervisor_execution_persistence_service.persist(command)`
-- `execution_consistency_coordinator.create_waiting_review_with_snapshot(...)`
-- `execution_consistency_coordinator.start_approved_resume(...)`
-- `execution_consistency_coordinator.complete_execution(...)`
-- `reviewed_execution_snapshot_store.verify(task_id, session_id, resume_token, state_version, request_hash, frozen_plan_hash)`
+- `agent_service.execute_task(session_id, message, request_id) -> Dict`
+- `consistency_coordinator.check_and_reserve_request(request_id, task_id) -> (bool, task_id)`
+- `graph_execution.execute_plan(session_id, task_id, plan) -> Dict`
+- `invocation_service.invoke(agent_key, method, arguments) -> Result`
+- `event_publisher.publish_chunk(session_id, task_id, agent, payload)`
 
 ## Method Compatibility Policy
-
-supervisor는 아래 method family를 동시에 지원해야 한다.
 
 | Operation | Legacy JSON-RPC | Current JSON-RPC |
 |---|---|---|
@@ -81,7 +58,6 @@ supervisor는 아래 method family를 동시에 지원해야 한다.
 
 ## Progress / Stream Policy
 
-- progress 출력은 `supervisor_progress_publisher` 공통 포맷을 사용한다.
-- stream 응답은 FastAPI SSE 정책으로 일관되게 유지한다.
-- handoff, hitl, invoke, merge, compose 단계는 progress stage를 노출해야 한다.
-- endpoint는 typed `SupervisorOutputEvent`를 최종 SSE event/data로 매핑하는 마지막 adapter 역할만 담당한다.
+- 모든 진행 상태는 Redis Stream(`XADD`)을 통해 발행된다.
+- 클라이언트는 `/stream` 엔드포인트에서 SSE를 통해 이벤트를 수신한다.
+- 이벤트 타입: `progress`, `reasoning`, `chunk`, `a2ui`, `done`, `error`.

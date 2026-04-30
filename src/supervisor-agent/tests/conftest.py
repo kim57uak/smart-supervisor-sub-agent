@@ -1,8 +1,10 @@
 import pytest
 import asyncio
 from fakeredis.aioredis import FakeRedis
-from ..app.infrastructure.redis.redis_client import RedisClient
-from ..app.core.dependencies import get_redis
+from app.infrastructure.redis.redis_client import RedisClient
+from app.core.dependencies import get_redis
+
+import pytest_asyncio
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -10,7 +12,7 @@ def event_loop():
     yield loop
     loop.close()
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def mock_redis(monkeypatch):
     fake_redis = FakeRedis(decode_responses=True)
     
@@ -18,7 +20,7 @@ async def mock_redis(monkeypatch):
     RedisClient._instance = fake_redis
     
     # Override FastAPI dependency
-    from ..app.main import app
+    from app.main import app
     app.dependency_overrides[get_redis] = lambda: fake_redis
     
     yield fake_redis

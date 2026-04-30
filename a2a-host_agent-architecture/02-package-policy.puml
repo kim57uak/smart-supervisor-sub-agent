@@ -23,7 +23,7 @@ package "src/app" {
     class supervisor_execution_service
     class supervisor_execution_result_collector
     class supervisor_review_application_service
-    class supervisor_stream_progress_service
+    class supervisor_task_event_stream_service
     class supervisor_task_facade
     class supervisor_read_facade
     class supervisor_read_query_factory

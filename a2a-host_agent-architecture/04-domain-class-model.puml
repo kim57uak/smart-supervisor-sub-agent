@@ -178,23 +178,51 @@ class SupervisorGraphState {
   +SWARM_STATE_VERSION
 }
 
+enum TaskState {
+  CREATED
+  WAITING_REVIEW
+  RUNNING
+  CANCELED
+  COMPLETED
+  FAILED
+}
+
+enum EventType {
+  ACCEPTED
+  PROGRESS
+  REASONING
+  CHUNK
+  A2UI
+  DONE
+  ERROR
+  HEARTBEAT
+}
+
+enum AgentRole {
+  SUPERVISOR
+  PRODUCT
+  RESERVATION
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum RedisNamespace {
+  GLOBAL_PREFIX
+  TASK
+  IDEMPOTENCY
+  EVENTS
+  QUEUE
+}
+
 class A2aTaskSnapshot {
   +task_id: str
   +session_id: str
-  +status: A2aTaskStatus
+  +status: TaskState
   +request_message: str
   +response_payload: dict
   +error_code: str
   +error_message: str
-}
-
-enum A2aTaskStatus {
-  SUBMITTED
-  RUNNING
-  WAITING_REVIEW
-  COMPLETED
-  FAILED
-  CANCELED
 }
 
 interface SupervisorPlanningService {

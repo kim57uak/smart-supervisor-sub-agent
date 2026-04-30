@@ -9,10 +9,13 @@ class ReviewDecideRequest(BaseModel):
     review_id: Optional[str] = None
     comment: Optional[str] = None
     client_request_id: Optional[str] = None
+    session_id: Optional[str] = None
+    request_params: Optional[Dict[str, Any]] = None
 
 
 class ReviewApproveAck(BaseModel):
     task_id: str
+    session_id: Optional[str] = None
     state_version: int
     execution_mode: str
     resume_accepted: bool = True
@@ -34,10 +37,12 @@ class ReviewRejectResult(BaseModel):
 class SendMessageParams(BaseModel):
     session_id: str
     message: str
+    request_id: Optional[str] = None
     model: Optional[str] = None
 
 
 class TaskEventsParams(BaseModel):
     task_id: str
+    session_id: Optional[str] = None
     cursor: Optional[str] = None
     replay: bool = True

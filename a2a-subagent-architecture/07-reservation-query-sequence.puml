@@ -1,0 +1,29 @@
+@startuml
+!pragma layout smetana
+title 07. Reservation Query Sequence (Decoupled Flow)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor User
+participant "chat_endpoint" as API
+participant "chat_usecase" as Usecase
+database "Redis (Queue/Stream)" as Redis
+participant "worker" as Worker
+participant "agent_executor" as Executor
+participant "mcp_executor" as MCP
+
+User -> API : POST /api/v1/agent/reservation/chat
+API -> Usecase : handle_chat_request(request)
+Usecase -> Redis : LPUSH (Enquue Task)
+Usecase --> API : Accepted (task_id)
+API --> User : HTTP 202 (task_id)
+
+note over Worker, MCP : Background Execution
+Worker -> Redis : BRPOP (Dequeue Task)
+Worker -> Executor : execute
+Executor -> MCP : execute (createReservation)
+MCP --> Executor : result
+Executor -> Redis : XADD (Progress Event)
+
+@enduml

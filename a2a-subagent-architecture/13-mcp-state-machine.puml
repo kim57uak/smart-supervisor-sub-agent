@@ -1,0 +1,26 @@
+@startuml
+title 13. MCP State Machine (Source Synchronized)
+
+skinparam shadowing false
+
+[*] --> received
+received --> validated
+validated --> planned
+planned --> executing
+executing --> finalized
+finalized --> composing
+composing --> completed
+executing --> failed
+composing --> failed
+
+note right of validated
+- key = session_id + request_id
+- trace_id propagated
+end note
+
+note right of finalized
+- tool results gathered
+- history updated
+end note
+
+@enduml

@@ -1,0 +1,39 @@
+from typing import Protocol, List, Dict, Any, AsyncIterator, Optional
+from ..domain.models import PlanningContext, ToolPlan, AgentExecutionResult, AgentTask, AiChatChunk
+from ..domain.enums import ProcessStatus
+
+class Planner(Protocol):
+    """Abstract Port for planning tool calls."""
+    async def plan(self, context: PlanningContext) -> List[ToolPlan]: ...
+
+class ToolExecutor(Protocol):
+    """Abstract Port for executing MCP tools."""
+    async def execute(self, plan: ToolPlan) -> Dict[str, Any]: ...
+
+class Composer(Protocol):
+    """Abstract Port for composing final answers."""
+    async def stream_compose(self, context: PlanningContext) -> AsyncIterator[AiChatChunk]: ...
+
+class Store(Protocol):
+    """Abstract Port for persistent state management."""
+    async def save_task(self, task: AgentTask) -> None: ...
+    async def load_task(self, task_id: str) -> Optional[AgentTask]: ...
+    async def check_and_reserve_idempotency(self, request_id: str, task_id: str) -> bool: ...
+    async def update_task_status(self, task_id: str, status: ProcessStatus) -> None: ...
+    async def save_swarm_state(self, session_id: str, state: Dict[str, Any]) -> None: ...
+    async def load_swarm_state(self, session_id: str) -> Dict[str, Any]: ...
+
+class TaskQueue(Protocol):
+    """Abstract Port for task queuing."""
+    async def enqueue(self, task_data: Dict[str, Any]) -> None: ...
+    async def dequeue(self) -> Dict[str, Any]: ...
+
+class ProgressPublisher(Protocol):
+    """Abstract Port for real-time progress events."""
+    async def publish(
+        self, 
+        session_id: str, 
+        task_id: str, 
+        event_data: Dict[str, Any],
+        trace_id: Optional[str] = None
+    ) -> None: ...

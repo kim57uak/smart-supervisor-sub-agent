@@ -1,41 +1,38 @@
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Protocol, Dict, Any, Optional, List
 from ..domain.models import ReviewedExecutionSnapshot
 
-
-class ConversationStore(ABC):
-    @abstractmethod
+class ConversationStore(Protocol):
     async def save_message(self, session_id: str, message: Dict[str, Any]):
-        pass
+        ...
 
+    async def get_messages(self, session_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        ...
 
-class GraphCheckpointStore(ABC):
-    @abstractmethod
-    async def save_checkpoint(self, task_id: str, checkpoint_data: Dict[str, Any]):
-        pass
+class GraphCheckpointStore(Protocol):
+    async def save_checkpoint(self, session_id: str, task_id: str, checkpoint_data: Dict[str, Any]):
+        ...
 
+class ReviewStore(Protocol):
+    async def save_review(self, session_id: str, task_id: str, review_data: Dict[str, Any]):
+        ...
 
-class SupervisorReviewStore(ABC):
-    @abstractmethod
-    async def save_review(self, task_id: str, review_data: Dict[str, Any]):
-        pass
-
-
-class A2ATaskStore(ABC):
-    @abstractmethod
-    async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
-        pass
+class TaskStore(Protocol):
+    async def get_task(self, session_id: str, task_id: str) -> Optional[Dict[str, Any]]:
+        ...
         
-    @abstractmethod
-    async def save_task(self, task_id: str, task_data: Dict[str, Any]):
-        pass
+    async def save_task(self, session_id: str, task_id: str, task_data: Dict[str, Any]):
+        ...
 
-
-class ReviewedExecutionSnapshotStore(ABC):
-    @abstractmethod
-    async def save_snapshot(self, task_id: str, snapshot: ReviewedExecutionSnapshot, ttl: int):
-        pass
+class ExecutionSnapshotStore(Protocol):
+    async def save_snapshot(self, session_id: str, task_id: str, snapshot: ReviewedExecutionSnapshot, ttl: int):
+        ...
         
-    @abstractmethod
-    async def get_snapshot(self, task_id: str) -> Optional[ReviewedExecutionSnapshot]:
-        pass
+    async def get_snapshot(self, session_id: str, task_id: str) -> Optional[ReviewedExecutionSnapshot]:
+        ...
+
+class SwarmStateStore(Protocol):
+    async def save_swarm_state(self, session_id: str, swarm_state: Dict[str, Any]):
+        ...
+
+    async def get_swarm_state(self, session_id: str) -> Optional[Dict[str, Any]]:
+        ...

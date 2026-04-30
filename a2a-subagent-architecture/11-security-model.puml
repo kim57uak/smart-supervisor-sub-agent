@@ -1,0 +1,45 @@
+@startuml
+!pragma layout smetana
+title 11. Security Model (Enterprise Guardrails)
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+package "Entry Security" {
+  [agent_authorization_service] as auth
+  [Settings.a2a.scopes] as auth_store
+  [RedisAdapter.check_and_reserve_idempotency] as idempotency
+}
+
+package "Runtime Security" {
+  [LlmPlanner.plan] as injection_guard
+  [McpToolRegistry] as tool_guard
+  [WorkflowFactory.max_iterations] as guardrail
+}
+
+package "Audit & Trace" {
+  [Trace propagation] as trace
+}
+
+database "Redis" as Redis
+
+API --> auth
+auth --> auth_store
+API --> idempotency
+idempotency --> Redis
+
+Graph --> injection_guard
+Graph --> tool_guard : allowlist only
+Graph --> guardrail : iterations/timeout
+
+API --> trace
+Worker --> trace
+
+note bottom
+- session_id isolation
+- trace_id + request_id + session_id propagation
+- P0: Scoped tool registry (Planner cannot see unallowed tools)
+- P0: Runtime resource limits (Guardrails)
+end note
+
+@enduml

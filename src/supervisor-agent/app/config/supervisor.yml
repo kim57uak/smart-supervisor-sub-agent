@@ -38,6 +38,16 @@ host:
         endpoint: http://localhost:8082/a2a/reservation
         method: message/send
         timeout-ms: 120000
+      # supply-cost 에이전트 추가
+      supply-cost:
+        endpoint: http://localhost:8082/a2a/supply-cost
+        method: message/send
+        timeout-ms: 120000
+      # weather 에이전트 추가
+      weather:
+        endpoint: http://localhost:8082/a2a/weather
+        method: message/send
+        timeout-ms: 120000
     # downstream 호출 재시도 정책
     retry:
       # 추가 재시도 횟수 (총 시도 횟수 = max-retries + 1)

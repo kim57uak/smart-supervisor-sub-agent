@@ -7,39 +7,35 @@ echo "======================================"
 echo "Stopping Smart Supervisor Sub-Agent..."
 echo "======================================"
 
+# Stop API Server
 if [ -f "server.pid" ]; then
     PID=$(cat server.pid)
-    
-    if ps -p $PID > /dev/null; then
-        echo "Killing Uvicorn master process ($PID)..."
-        kill $PID
-        
-        # Wait a moment for graceful shutdown
-        sleep 2
-        
-        # Check if it's still running, force kill if necessary
-        if ps -p $PID > /dev/null; then
-            echo "Process didn't stop, forcing kill..."
-            kill -9 $PID
-        fi
-        
-        echo "Server stopped successfully."
-        rm server.pid
-    else
-        echo "Process $PID is not running."
-        rm server.pid
-        
-        # Fallback: kill all uvicorn processes started in this directory
-        echo "Attempting to kill any orphaned uvicorn processes..."
-        pkill -f "uvicorn app.main:app"
-    fi
-else
-    echo "server.pid not found. Looking for running uvicorn instances..."
-    if pgrep -f "uvicorn app.main:app" > /dev/null; then
-        echo "Found running instances. Terminating..."
-        pkill -f "uvicorn app.main:app"
-        echo "Server stopped."
-    else
-        echo "No running server found."
-    fi
+    echo "Stopping API Server (PID: $PID)..."
+    kill $PID 2>/dev/null
+    rm server.pid
 fi
+
+# Stop Background Workers
+if [ -f "worker.pid" ]; then
+    echo "Stopping Background Workers..."
+    while read W_PID; do
+        echo "Killing worker PID: $W_PID"
+        kill $W_PID 2>/dev/null
+    done < worker.pid
+    rm worker.pid
+fi
+
+# Fallback: Clean up any remaining processes
+echo "Cleaning up any remaining processes..."
+
+# 1. Kill by Port (Most reliable)
+PORT=8000
+echo "Cleaning up processes on port $PORT..."
+lsof -ti :$PORT | xargs kill -9 2>/dev/null
+
+# 2. Kill by Pattern
+pkill -9 -f "uvicorn main:app.*--port $PORT"
+pkill -9 -f "uvicorn main:app"
+pkill -9 -f "python worker.py"
+
+echo "All processes stopped."

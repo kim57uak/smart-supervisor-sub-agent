@@ -44,12 +44,21 @@ class PlanHashCalculator:
         # Filter only canonicalizable fields for request hash
         payload = {
             "session_id": params.get("session_id"),
-            "message": params.get("message"),
-            "model": params.get("model")
+            "request_id": params.get("request_id"),
+            "execution_mode": params.get("execution_mode", "STREAM"),
+            "normalized_user_input": params.get("message", params.get("normalized_user_input")),
+            "normalized_business_params": params.get("normalized_business_params", {})
         }
         return CanonicalJsonSerializer.calculate_hash(payload)
 
     @staticmethod
-    def calculate_frozen_plan_hash(routing_queue: list) -> str:
-        # Canonicalize the routing queue
-        return CanonicalJsonSerializer.calculate_hash(routing_queue)
+    def calculate_frozen_plan_hash(plan_data: Dict[str, Any]) -> str:
+        # Canonicalize the frozen plan envelope
+        payload = {
+            "schema_version": plan_data.get("schema_version", 1),
+            "canonicalization_version": plan_data.get("canonicalization_version", 1),
+            "routing_queue": plan_data.get("routing_queue", []),
+            "execution_constraints": plan_data.get("execution_constraints", {}),
+            "planner_metadata": plan_data.get("planner_metadata", {})
+        }
+        return CanonicalJsonSerializer.calculate_hash(payload)

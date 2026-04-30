@@ -4,6 +4,7 @@ import httpx
 import structlog
 from ...ports.integration_ports import A2AInvocationService
 from ...core.config import settings
+from ...domain.enums import ApiMethod
 
 logger = structlog.get_logger()
 
@@ -98,7 +99,7 @@ class DefaultA2AInvocationService(A2AInvocationService):
         # Unary 호출이므로 streaming method를 message/send로 정규화
         inv_cfg = settings.supervisor_config.get("invocation", {})
         streaming_methods = set(inv_cfg.get("streaming-methods", ["message/stream", "SendStreamingMessage"]))
-        default_method = inv_cfg.get("default-method", "message/send")
+        default_method = inv_cfg.get("default-method", ApiMethod.SEND_MESSAGE.value)
         
         invoke_method = default_method if method in streaming_methods else method
         
@@ -126,8 +127,20 @@ class DefaultA2AInvocationService(A2AInvocationService):
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     resp = await client.post(endpoint, json=payload)
                     
-                    if resp.status_code != 200:
+                    # Rationale (Why): A2A standard (Doc 08) specifies that 202 Accepted is the correct 
+                    # response for async tasks. Treating both 200 and 202 as success prevents false failures.
+                    if resp.status_code not in [200, 202]:
                         raise httpx.HTTPStatusError(f"HTTP {resp.status_code}", request=None, response=resp)
+                    
+                    # For 202 Accepted, the body might be empty or just a task ACK
+                    if resp.status_code == 202:
+                        logger.info("a2a_invoke_accepted", agent_key=agent_key)
+                        return {
+                            "agent_key": agent_key,
+                            "method": method,
+                            "status": "COMPLETED",
+                            "payload": {"answer": f"[{agent_key}] 요청이 접수되었습니다.", "data": {"status": "ACCEPTED"}}
+                        }
                     
                     rpc_response = resp.json()
                     
@@ -227,6 +240,9 @@ class DefaultA2AInvocationService(A2AInvocationService):
                     self._record_success(agent_key)
                     buffer = ""
                     async for chunk in resp.aiter_text():
+                        # Rationale (Why): Added detailed chunk logging to trace stream data flow 
+                        # and diagnose why the user might not be seeing output.
+                        logger.debug("a2a_stream_chunk_received", agent_key=agent_key, chunk_size=len(chunk))
                         buffer += chunk
                         while "\n\n" in buffer:
                             event_str, buffer = buffer.split("\n\n", 1)
@@ -241,12 +257,14 @@ class DefaultA2AInvocationService(A2AInvocationService):
                                     event_data = json.loads(data_line)
                                     answer = self._extract_answer_from_event(event_data)
                                     if answer:
+                                        logger.debug("a2a_stream_event_parsed", agent_key=agent_key, answer_preview=answer[:50])
                                         yield {
                                             "agent_key": agent_key,
                                             "method": method,
                                             "payload": {"answer": answer, "data": event_data}
                                         }
-                                except json.JSONDecodeError:
+                                except json.JSONDecodeError as e:
+                                    logger.warning("a2a_stream_json_decode_failed", agent_key=agent_key, error=str(e), data=data_line)
                                     pass
                                     
         except Exception as e:

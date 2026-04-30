@@ -1,100 +1,64 @@
 @startuml
 !pragma layout smetana
-title 10. Supervisor Agent Deployment Runtime (Python runtime)
+title 10. Supervisor Agent Deployment Runtime (Decoupled & Worker-ready)
 
 skinparam shadowing false
 skinparam componentStyle rectangle
-top to bottom direction
 
-node "Supervisor Agent FastAPI Runtime" {
-  [supervisor_a2a_endpoint] as supervisor_a2a_endpoint
-  [supervisor_a2a_request_validator] as supervisor_a2a_request_validator
-  [supervisor_agent_service] as supervisor_agent_service
-  [supervisor_a2a_lifecycle_service] as supervisor_a2a_lifecycle_service
-  [supervisor_request_idempotency_service] as supervisor_request_idempotency_service
-  [supervisor_agent_orchestrator] as supervisor_agent_orchestrator
-  [supervisor_execution_persistence_service\n<<facade>>] as supervisor_execution_persistence_service
-  [supervisor_persistence_strategy_factory] as supervisor_persistence_strategy_factory
-  [execution_consistency_coordinator] as execution_consistency_coordinator
-  [langgraph_supervisor_state_graph_factory] as langgraph_supervisor_state_graph_factory
-  [llm_supervisor_planning_service] as llm_supervisor_planning_service
-  [default_a2a_invocation_service] as default_a2a_invocation_service
-  [default_handoff_policy_service] as default_handoff_policy_service
-  [default_supervisor_swarm_coordinator] as default_supervisor_swarm_coordinator
-  [llm_supervisor_response_compose_service] as llm_supervisor_response_compose_service
-  [default_supervisor_product_info_a2ui_service] as default_supervisor_product_info_a2ui_service
-  [default_hitl_decision_service] as default_hitl_decision_service
-  [a2a_client_registry] as a2a_client_registry
-  [a2a_json_rpc_client] as a2a_json_rpc_client
-  [default_supervisor_llm_runtime] as default_supervisor_llm_runtime
-  [supervisor_chat_gateway] as supervisor_chat_gateway
-  [supervisor_progress_publisher] as supervisor_progress_publisher
+node "API Runtime (FastAPI)" #E8F8F5 {
+  [main.py / uvicorn] as API
+  [supervisor_a2a_endpoint] as Endpoint
+  [supervisor_agent_service] as AgentService
+  [supervisor_task_event_stream_service] as EventService
 }
 
-database "Redis / InMemory Stores" as Stores {
-  [ConversationStore] as ConversationStore
-  [GraphCheckpointStore] as CheckpointStore
-  [SupervisorSwarmStateStore] as SwarmStateStore
-  [SupervisorReviewStore] as ReviewStore
-  [A2ATaskStore] as TaskStore
+node "Background Worker Runtime" #F9E79F {
+  [worker.py / main] as Worker
+  [supervisor_graph_execution_service] as GraphExecution
+  [supervisor_progress_publisher] as Publisher
+  [supervisor_response_compose_service] as Composer
+}
+
+database "Redis Infra" #FDF2E9 {
+  [package:supervisor:task_queue] as TaskQueue
+  [package:supervisor:events] as EventStream
+  [package:supervisor:session:*] as SessionStore
+  [package:supervisor:idempotency:*] as Idempotency
 }
 
 cloud "LLM Providers" as LlmProviders
 
-node "Downstream A2A Agents" {
-  [Product Agent] as ProductAgent
-  [Reservation Agent] as ReservationAgent
+node "Downstream A2A Agents" as Downstream {
+  [Product Agent]
+  [Reservation Agent]
 }
 
-artifact "settings/app.yml / settings/supervisor-hitl.yml" as Config
+API --> Endpoint
+Endpoint --> AgentService
+Endpoint --> EventService : SSE Subscription
 
-supervisor_agent_service -[hidden]down-> Stores
-Stores -[hidden]down-> DownstreamAgents
-DownstreamAgents -[hidden]down-> LlmProviders
-LlmProviders -[hidden]down-> Config
+AgentService --> Idempotency : check_and_reserve (SET NX)
+AgentService --> TaskQueue : LPUSH (Task Submission)
 
-supervisor_a2a_endpoint --> supervisor_a2a_request_validator
-supervisor_a2a_endpoint --> supervisor_agent_service
-supervisor_agent_service --> supervisor_request_idempotency_service
-supervisor_agent_service --> default_hitl_decision_service
-supervisor_agent_service --> supervisor_a2a_lifecycle_service
-supervisor_agent_service --> supervisor_agent_orchestrator
-supervisor_agent_service --> supervisor_execution_persistence_service
-supervisor_agent_service --> llm_supervisor_planning_service
-supervisor_a2a_lifecycle_service --> supervisor_execution_persistence_service
-supervisor_agent_orchestrator --> langgraph_supervisor_state_graph_factory
-langgraph_supervisor_state_graph_factory --> default_a2a_invocation_service
-langgraph_supervisor_state_graph_factory --> default_handoff_policy_service
-langgraph_supervisor_state_graph_factory --> default_supervisor_swarm_coordinator
-supervisor_agent_orchestrator --> llm_supervisor_response_compose_service
-supervisor_agent_orchestrator --> supervisor_execution_persistence_service
-supervisor_execution_persistence_service --> supervisor_persistence_strategy_factory
-supervisor_persistence_strategy_factory --> execution_consistency_coordinator
-llm_supervisor_response_compose_service --> default_supervisor_product_info_a2ui_service
-llm_supervisor_planning_service --> default_supervisor_llm_runtime
-llm_supervisor_response_compose_service --> default_supervisor_llm_runtime
-default_supervisor_llm_runtime --> supervisor_chat_gateway
-supervisor_chat_gateway --> LlmProviders
-default_a2a_invocation_service --> a2a_client_registry
-a2a_client_registry --> Config
-default_a2a_invocation_service --> a2a_json_rpc_client
-a2a_json_rpc_client --> ProductAgent
-a2a_json_rpc_client --> ReservationAgent
-execution_consistency_coordinator --> ConversationStore
-execution_consistency_coordinator --> CheckpointStore
-execution_consistency_coordinator --> SwarmStateStore
-execution_consistency_coordinator --> ReviewStore
-execution_consistency_coordinator --> TaskStore
-supervisor_agent_orchestrator --> supervisor_progress_publisher
+Worker --> TaskQueue : BRPOP
+Worker --> GraphExecution : execute_plan
+GraphExecution --> Publisher : publish events
+Publisher --> EventStream : XADD
 
-note right of supervisor_agent_service
-HITL is enforced before graph execution.
-WAITING_REVIEW requests do not enter orchestrator.
+GraphExecution --> Composer : stream_compose
+Composer --> LlmProviders : astream
+
+GraphExecution --> Downstream : A2A JSON-RPC calls
+
+note right of API
+Independent Runtime:
+- ROOT .venv shared for libs
+- PYTHONPATH=. for source isolation
+- PORT 8000
 end note
 
-note right of supervisor_execution_persistence_service
-All Redis writes enter through the facade.
-Lifecycle service delegates write intent to the facade.
-Strategies decide review-open / approved-resume / completion handling.
+note bottom of TaskQueue
+All keys prefixed with 'package:'
+via RedisNamespace.GLOBAL_PREFIX
 end note
 @enduml

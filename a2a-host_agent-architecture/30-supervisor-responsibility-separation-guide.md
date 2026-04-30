@@ -1,150 +1,27 @@
 # 30. Supervisor Responsibility Separation Guide
 
-Updated: 2026-04-25
-Current baseline: `src/app`
+Updated: 2026-04-28 (Implementation Refined)
 
-## Purpose
+## Core Separation Principle: CQRS & Decoupling
 
-본 문서는 supervisor의 책임 분리 기준을 확정한다. 목표는 Python 모듈이 많아지는 것이 아니라, 실행 책임이 어디서 시작하고 어디서 끝나는지 문서만 읽어도 헷갈리지 않게 만드는 것이다.
+Supervisor는 기능적 복잡도를 해결하기 위해 **CQRS(명령 조회 책임 분리)**와 **실행 환경 분리(Decoupled Worker)** 패턴을 핵심 책임 분리 기준으로 삼는다.
 
-## Top-Level Rule
+## 1. Execution Tier (Command & Logic)
+- **`SupervisorAgentService`**: API 진입점의 유즈케이스 조립. 멱등성 선점 및 작업 큐잉에만 집중한다.
+- **`WorkerExecutionService`**: 워커 프로세스의 수명 주기 관리 및 작업 실행 루프 제어.
+- **`SupervisorGraphExecutionService`**: 실제 오케스트레이션(LangGraph)의 조정자. 그래프 실행, 진행 이벤트 발행, 최종 결과 합성을 총괄한다.
 
-좋은 supervisor는 아래 여섯 가지가 섞이지 않아야 한다.
+## 2. Persistence Tier (Write & Consistency)
+- **`SupervisorExecutionPersistenceService`**: 상태 변경 시나리오별 전략(Strategy)을 관리하는 외벽(Facade).
+- **`ExecutionConsistencyCoordinator`**: 모든 Redis Write의 정렬 및 원자적 상태 전이(CAS)를 책임진다.
+- **`TaskEventStreamService`**: 진행 상태 이벤트의 영속화 및 실시간 발행에 특화된 저장소 관리.
 
-- entry/use case orchestration
-- runtime control
-- read scenario selection
-- persistence scenario selection
-- state consistency
-- presentation assembly
+## 3. Read Tier (Query & Audit)
+- **`SupervisorReadFacade`**: 모든 조회의 단일 진입점. 비즈니스 로직이 Store 구현체에 직접 노출되는 것을 차단한다.
+- **`SnapshotVerificationQuery`**: 승인 시점의 무결성 검증 로직을 고도로 응집하여 수행한다.
+- **`TaskReadModelQuery`**: 클라이언트에게 보여줄 정규화된 태스크 뷰 조립 담당.
 
-추가 고정 원칙:
-
-- 신규 downstream agent 온보딩의 기본 경로는 `yml + agent card`다.
-- routing/invocation core는 신규 agent 추가 때문에 수정되지 않아야 한다.
-- raw payload normalization과 A2UI mapping만 예외적으로 domain adapter를 허용한다.
-
-## Ownership Map
-
-### `supervisor_a2a_endpoint`
-
-소유 책임:
-
-- protocol entry
-- request/response envelope handling
-- SSE serialization
-
-비소유 책임:
-
-- routing
-- planner prompt 규칙 상세
-- task state transition
-- compose decision
-
-### `supervisor_agent_service`
-
-소유 책임:
-
-- use case branching
-- pre-HITL A2UI shortcut 연결
-- HITL gate 진입
-- execution service 호출
-- review read/decide flow 조립
-
-비소유 책임:
-
-- graph 노드 실행
-- persistence 세부 구현
-- progress string 직접 생성
-
-### `hitl_gate_service`
-
-소유 책임:
-
-- planner의 `review_required` 결과 해석
-- review 필요 시 planner 결과를 `plan + freeze`
-- review open
-- approve/cancel 처리
-- snapshot 검증
-
-비소유 책임:
-
-- downstream invoke
-- compose
-- task list/get presentation
-
-### `supervisor_execution_service`
-
-소유 책임:
-
-- sync, stream, approved resume 실행 모드 통합
-- orchestrator 호출 전후의 실행 모드 차이 흡수
-- cancellation and terminal handoff 조정
-
-### `supervisor_agent_orchestrator`
-
-소유 책임:
-
-- execution pipeline 조정
-- graph execution과 compose execution 연결
-- 예외 경계 관리
-
-### `supervisor_read_facade`
-
-소유 책임:
-
-- Redis read 단일 진입점 제공
-- read query 수신
-- query factory 선택 위임
-
-### `supervisor_execution_persistence_service`
-
-소유 책임:
-
-- Redis write 단일 진입점 제공
-- persistence command 수신
-- strategy 선택 위임
-
-### `execution_consistency_coordinator`
-
-소유 책임:
-
-- task/review/checkpoint/swarm/snapshot write ordering
-- partial write recovery marker
-- subordinate record reconciliation
-
-### `supervisor_response_compose_service`
-
-소유 책임:
-
-- final answer assembly
-- summary fallback
-- A2UI payload 연결
-
-### `supervisor_a2ui_service`
-
-소유 책임:
-
-- A2UI 후보 판정
-- normalized view payload 생성
-- 템플릿/메시지 조립
-
-## Separation Rules
-
-### Rule 1. HITL And Graph Separation
-
-- HITL은 graph 바깥에서 처리한다.
-- graph는 review를 기다리지 않는다.
-- review 경로는 `plan` 결과를 freeze한 뒤 승인하고, 승인 후 graph는 `ROUTING_SELECTED`부터 재개한다.
-
-### Rule 2. Execution And Persistence Separation
-
-- execution이 끝난 사실과 저장하는 방법을 같은 클래스가 모두 소유하지 않는다.
-- 서비스/오케스트레이터는 persistence facade만 호출하고 coordinator/store를 직접 호출하지 않는다.
-- 서비스/오케스트레이터는 read facade만 호출하고 store를 직접 조회하지 않는다.
-
-### Rule 3. Progress And Domain Result Separation
-
-- progress는 사용자와 운영자에게 실행 상태를 알리는 transport 이벤트다.
-- domain result는 최종 task payload와 A2A response의 source of truth다.
-- progress 이벤트를 final payload persistence와 섞지 않는다.
+## Separation Guardrails
+- **No Direct Store Access**: 어떤 서비스도 Redis Store 클래스에 직접 접근하지 않으며 반드시 Facade를 거친다.
+- **No Planning in Worker**: 플래닝(Planning)은 API 계층에서 완료되어 동결되며, 워커는 오직 동결된 계획의 실행에만 집중한다.
+- **Progress vs Result**: 진행 상태(Progress/Reasoning)는 오직 전송용(SSE)이며, 최종 결과(Final Answer)만이 태스크 결과 저장소에 영속화된다.

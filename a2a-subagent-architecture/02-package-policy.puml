@@ -1,0 +1,86 @@
+@startuml
+!pragma layout smetana
+title 02. Sub-agent Package Policy (Final Implementation Baseline)
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+package "src/app" {
+  package "api" {
+    package "agent" {
+      [chat.py] <<Router>>
+    }
+    package "a2a" {
+      [discovery.py] <<Router>>
+    }
+    package "support" {
+      [a2a_handler.py] <<Logic>>
+      [stream.py] <<Router>>
+      [agent_request_factory.py]
+      [agent_response_mapper.py]
+    }
+  }
+
+  package "application.execution" {
+    [chat_usecase.py] <<UseCase>>
+    [executor.py] <<Orchestrator>>
+    [worker.py] <<Runtime>>
+    [agent_progress_publisher.py]
+  }
+
+  package "application.persistence" {
+    [agent_persistence.py] <<Commander>>
+    [execution_consistency_coordinator.py] <<Coordinator>>
+  }
+
+  package "application.read" {
+    [agent_read_facade.py] <<Reader>>
+  }
+
+  package "ports" {
+    [interfaces.py] <<Protocols>>
+  }
+
+  package "adapters" {
+    package "llm" {
+      [llm_adapters.py]
+    }
+    package "mcp" {
+      [mcp_adapters.py]
+      [mcp_infrastructure.py]
+      [mcp_tool_registry.py]
+    }
+    package "store" {
+      [redis_store.py]
+    }
+    package "orchestration" {
+      [langgraph_factory.py]
+    }
+  }
+
+  package "domain" {
+    [models.py]
+    [enums.py]
+    [exceptions.py]
+  }
+
+  package "infrastructure" {
+    [llm_runtime.py]
+    [redis_client.py]
+  }
+
+  package "core" {
+    [config.py] <<Settings>>
+    [dependencies.py] <<DI>>
+  }
+}
+
+note bottom
+Final Alignment Rules
+- Separated API and Worker logic
+- Centralized Settings via Pydantic
+- Trace ID propagation mandatory
+- Pythonic naming (snake_case files)
+end note
+
+@enduml

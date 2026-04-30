@@ -1,0 +1,49 @@
+@startuml
+!pragma layout smetana
+title 08. A2A Request Sequence (Decoupled Worker Flow)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Supervisor" as Supervisor
+participant "a2a_router" as API
+participant "AgentChatUseCase" as Usecase
+participant "AgentPersistence" as Persistence
+database "Redis (RedisAdapter)" as Redis
+participant "WorkerExecutionService" as Worker
+participant "AgentExecutor" as Executor
+participant "LangGraph (Compiled)" as Graph
+
+Supervisor -> API : JSON-RPC Request\n(trace_id, request_id, session_id)
+API -> Usecase : handle_chat_request(request)
+
+Usecase -> Persistence : check_and_reserve_idempotency(request_id)
+Persistence -> Redis : SET NX (Idempotency)
+Redis --> Persistence : Success
+Persistence --> Usecase : is_new=True, task_id
+
+Usecase -> Redis : enqueue (task_id, payload)
+Redis --> Usecase : OK
+
+Usecase --> API : Accepted (task_id, status=ACCEPTED)
+API --> Supervisor : HTTP 202 Accepted / JSON-RPC Initial Response
+
+note over Worker, Graph : Background Execution
+
+Worker -> Redis : dequeue
+Redis --> Worker : task_context
+
+Worker -> Executor : execute(task_context)
+Executor -> Graph : astream(initial_state)
+
+loop for each node (Planning, Execution, Compose)
+    Graph -> Graph : Run Node Logic
+    Executor -> Redis : publish (progress/chunk)
+    Executor -> Persistence : update_task_status(task_id, status)
+end
+
+Graph --> Executor : Final State
+Executor -> Persistence : save_task(task_result)
+Persistence -> Redis : Update task_status & Save result
+
+@enduml

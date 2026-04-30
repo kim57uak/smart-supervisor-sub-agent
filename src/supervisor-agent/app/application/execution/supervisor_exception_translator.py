@@ -14,16 +14,19 @@ class SupervisorExceptionTranslator:
     def to_review_reject_response(
         rpc_id: Any, 
         task_id: str, 
-        reason: ReasonCode, 
+        reason: Any, 
         current_state: str,
         state_version: int
     ) -> JsonRpcResponse:
+        # Handle both Enum and string
+        reason_code = reason.value if hasattr(reason, 'value') else reason
+        
         return JsonRpcResponse(
             id=rpc_id,
             result=ReviewRejectResult(
                 task_id=task_id,
                 resume_accepted=False,
-                reason_code=reason.value,
+                reason_code=reason_code,
                 current_state=current_state,
                 state_version=state_version
             )

@@ -4,29 +4,44 @@
 # FastAPI Server Start Script with 4 Uvicorn Workers
 
 PORT=8000
-WORKERS=4
+API_WORKERS=4
+BG_WORKERS=4
 
 echo "======================================"
-echo "Starting Smart Supervisor Sub-Agent..."
+echo "Starting Smart Supervisor Agent..."
+echo "Config: API Workers ($API_WORKERS), BG Workers ($BG_WORKERS)"
 echo "======================================"
 
 # Ensure virtual environment is activated
-if [ -d ".venv" ]; then
-    source .venv/bin/activate
+if [ -d "../../.venv" ]; then
+    source "../../.venv/bin/activate"
 else
-    echo "Virtual environment (.venv) not found! Please create one and install dependencies."
+    echo "Root virtual environment (../../.venv) not found! Please create one at the project root."
     exit 1
 fi
 
-# Run Uvicorn with 4 workers in the background
-# We save the PID to a file so we can easily stop it later
-nohup uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers $WORKERS > uvicorn.log 2>&1 &
+# 1. Run API Server with 4 workers
+# Disable embedded workers in API processes for maximum performance
+export EMBEDDED_WORKER_ENABLED=false
+export PYTHONPATH=.
+nohup uvicorn main:app --host 0.0.0.0 --port $PORT --workers $API_WORKERS > uvicorn.log 2>&1 &
 PID=$!
-
 echo $PID > server.pid
+echo "API Server master started with PID: $PID"
 
-echo "Server started with PID: $PID"
+# 2. Run Standalone Background Workers
+echo "Starting $BG_WORKERS standalone background workers..."
+> worker.pid # Initialize/Clear PID file
+
+for i in $(seq 1 $BG_WORKERS)
+do
+    nohup ../../.venv/bin/python3 worker.py > worker_$i.log 2>&1 &
+    echo $! >> worker.pid
+done
+
+echo "Successfully started all processes."
 echo "Listening on http://localhost:$PORT"
-echo "Logs are being written to uvicorn.log"
+echo "Logs: uvicorn.log, worker_1.log ... worker_$BG_WORKERS.log"
 echo ""
-echo "To stop the server, run: ./stop.sh"
+echo "To stop everything, run: ./stop.sh"
+

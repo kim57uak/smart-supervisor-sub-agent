@@ -1,10 +1,13 @@
 from typing import List, Dict, Any, AsyncGenerator, Tuple
-from ...ports.llm_ports import SupervisorResponseComposeService
+from ...ports.llm_ports import ResponseComposeService
 from ...infrastructure.llm.llm_runtime import LlmRuntime
 from ...core.config import settings
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
-class LlmSupervisorResponseComposeService(SupervisorResponseComposeService):
+class LlmResponseComposeService(ResponseComposeService):
     def __init__(self):
         self.llm = LlmRuntime.get_chat_model()
 
@@ -26,7 +29,7 @@ class LlmSupervisorResponseComposeService(SupervisorResponseComposeService):
         if not results:
             if user_message:
                 try:
-                    system_prompt = settings.prompts["compose-system"]
+                    system_prompt = settings.prompts.get("compose-direct-system", settings.prompts["compose-system"])
                     response = await self.llm.ainvoke([
                         ("system", system_prompt),
                         ("user", f"Context History:\n{history_str}\n\nUser Message: {user_message}")
@@ -37,7 +40,7 @@ class LlmSupervisorResponseComposeService(SupervisorResponseComposeService):
             return "조회된 결과가 없습니다."
 
         results_str = "\n".join([
-            f"Agent [{res.get('agent_key')}]: {res.get('payload', {}).get('answer')}"
+            f"Agent [{res.get('agent')}]: {res.get('result', {}).get('payload', {}).get('answer')}"
             for res in results
         ])
         
@@ -71,6 +74,9 @@ class LlmSupervisorResponseComposeService(SupervisorResponseComposeService):
         Yields tuples of (event_type, token) where event_type is 'reasoning' or 'chunk'.
         """
         user_message = context.get("message", "")
+        task_id = context.get("task_id", "unknown")
+        
+        log = logger.bind(task_id=task_id)
 
         # 히스토리 로딩 (supervisor.yml 정책 반영)
         history_config = settings.supervisor_config.get("history", {})
@@ -84,14 +90,14 @@ class LlmSupervisorResponseComposeService(SupervisorResponseComposeService):
             history_str += f"{role.upper()}: {content}\n"
 
         if not results:
-            system_prompt = settings.prompts["compose-system"]
+            system_prompt = settings.prompts.get("compose-direct-system", settings.prompts["compose-system"])
             messages = [
                 ("system", system_prompt),
                 ("user", f"Context History:\n{history_str}\n\nUser Message: {user_message or '안녕하세요'}")
             ]
         else:
             results_str = "\n".join([
-                f"Agent [{res.get('agent_key')}]: {res.get('payload', {}).get('answer')}"
+                f"Agent [{res.get('agent')}]: {res.get('result', {}).get('payload', {}).get('answer')}"
                 for res in results
             ])
             
@@ -127,6 +133,7 @@ class LlmSupervisorResponseComposeService(SupervisorResponseComposeService):
                     return
 
         try:
+            token_count = 0
             async for chunk in self.llm.astream(messages):
                 # 1. Check for explicit reasoning/thinking content
                 reasoning_content = None
@@ -153,7 +160,11 @@ class LlmSupervisorResponseComposeService(SupervisorResponseComposeService):
                 
                 # 2. Yield actual answer content
                 if chunk.content:
+                    token_count += 1
                     yield ("chunk", chunk.content)
+            
+            log.info("stream_compose_finished", tokens=token_count)
                     
         except Exception as e:
+            log.error("stream_compose_failed", error=str(e))
             yield ("chunk", f"응답 생성 오류: {str(e)}")

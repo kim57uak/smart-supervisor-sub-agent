@@ -13,6 +13,7 @@ class FrozenRoutingStep(BaseModel):
     arguments: Dict[str, Any]
     handoff_depth: int
     parent_agent_key: Optional[str] = None
+    pre_hitl_a2ui: Optional[str] = None
 
 
 class ExecutionConstraintSet(BaseModel):
@@ -40,6 +41,7 @@ class FrozenExecutionPlan(BaseModel):
     routing_queue: List[FrozenRoutingStep]
     planner_metadata: Dict[str, Any] = {}
     execution_constraints: ExecutionConstraintSet
+    review_reason: Optional[str] = None
 
 
 class ReviewedExecutionSnapshot(BaseModel):
@@ -55,6 +57,7 @@ class ReviewedExecutionSnapshot(BaseModel):
     expires_at: datetime
     sanitized_input: Dict[str, Any]
     frozen_plan: FrozenExecutionPlan
+    review_reason: Optional[str] = None
 
 
 class SnapshotVerificationResult(BaseModel):
@@ -62,7 +65,6 @@ class SnapshotVerificationResult(BaseModel):
     ttl_valid: bool
     reason_code: ReasonCode = ReasonCode.SUCCESS
     
-    # Environment drift results (as per doc 32)
     route_allowed: bool = True
     method_allowed: bool = True
     stream_capability_allowed: bool = True

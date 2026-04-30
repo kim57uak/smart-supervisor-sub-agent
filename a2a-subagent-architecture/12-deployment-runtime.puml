@@ -1,0 +1,54 @@
+@startuml
+!pragma layout smetana
+title 12. Sub-agent Deployment Runtime (Decoupled & Worker-ready)
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+node "API Runtime (FastAPI)" #E8F8F5 {
+  [main.py / uvicorn] as API
+  [chat_endpoint] as Endpoint
+  [chat_usecase] as UseCase
+}
+
+node "Background Worker Runtime" #F9E79F {
+  [worker.py / main] as Worker
+  [agent_executor] as Executor
+  [RedisAdapter] as Publisher
+}
+
+database "Redis Infra" #FDF2E9 {
+  [package:subagent:task_queue] as TaskQueue
+  [package:subagent:events:*] as EventStream
+  [package:subagent:swarm_state:*] as SessionStore
+  [package:subagent:idempotency:*] as Idempotency
+}
+
+cloud "LLM Providers" as LlmProviders
+node "MCP Servers" as McpServers
+
+API --> Endpoint
+Endpoint --> UseCase
+UseCase --> Idempotency : check_and_reserve (SET NX)
+UseCase --> TaskQueue : LPUSH
+
+Worker --> TaskQueue : BRPOP
+Worker --> Executor : execute
+Executor --> Publisher : publish progress
+Publisher --> EventStream : XADD
+
+Executor --> LlmProviders : planning/compose
+Executor --> McpServers : tool execution
+
+note right of API
+Independent Runtime:
+- ROOT .venv shared for libs
+- PYTHONPATH=. for source isolation
+- PORT 8001
+end note
+
+note bottom of TaskQueue
+All keys prefixed with 'package:'
+via RedisNamespace.GLOBAL_PREFIX
+end note
+@enduml

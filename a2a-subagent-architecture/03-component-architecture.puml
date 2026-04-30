@@ -1,0 +1,72 @@
+@startuml
+!pragma layout smetana
+title 03. Component Architecture (Python Enterprise Architecture)
+
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+package "Entry (API)" {
+  [chat_endpoint] as api_agent
+  [a2a_endpoint] as api_a2a
+}
+
+package "Application (Execution)" {
+  [AgentChatUseCase] as usecase
+  [AgentExecutor] as executor
+  [WorkerExecutionService] as worker
+}
+
+package "Application (Persistence/Read)" {
+  [agent_persistence] as persistence
+  [agent_reader] as reader
+}
+
+package "Ports" {
+  [Planner] <<port>> as port_plan
+  [ToolExecutor] <<port>> as port_tool
+  [Composer] <<port>> as port_compose
+  [Store] <<port>> as port_store
+}
+
+package "Adapters" {
+  [LlmPlanner] as adapter_plan
+  [McpExecutor] as adapter_tool
+  [LlmComposer] as adapter_compose
+  [RedisAdapter] as adapter_store
+  [McpToolRegistry] as mcp_registry
+}
+
+package "Infrastructure" {
+  [redis_client] as redis
+  [llm_runtime] as llm
+}
+
+database "Redis Queue/Stream" as redis_queue
+
+api_agent --> usecase
+api_a2a --> usecase
+usecase --> redis_queue : enqueue task
+worker --> redis_queue : dequeue task
+worker --> executor : execute
+
+executor --> port_plan
+executor --> port_tool
+executor --> port_compose
+executor --> persistence
+executor --> adapter_store : publish progress
+
+adapter_store --> redis_queue : publish progress
+
+adapter_plan ..> port_plan : implements
+adapter_tool ..> port_tool : implements
+adapter_compose ..> port_compose : implements
+adapter_store ..> port_store : implements
+
+adapter_plan --> llm
+adapter_compose --> llm
+adapter_tool --> mcp_registry
+adapter_store --> redis
+
+@enduml

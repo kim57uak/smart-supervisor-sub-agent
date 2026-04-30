@@ -1612,6 +1612,7 @@
         const decideRes = await rpcCall('tasks/review/decide', {
           task_id: taskId,
           decision: decision,
+          session_id: sessionId,
           comment: ''
         });
 
@@ -1626,6 +1627,7 @@
                 method: 'tasks/events',
                 params: {
                     task_id: taskId,
+                    session_id: sessionId,
                     cursor: cursor
                 }
             };
@@ -1705,7 +1707,7 @@
                       const answer = parsed.data?.answer || parsed.answer || '';
                       
                       if (answer && typeof answer === 'string') {
-                          const isMainBubbleTarget = a2uiEnabled ? (agent === 'supervisor') : (agent !== 'supervisor');
+                          const isMainBubbleTarget = (agent === 'supervisor');
 
                           if (isMainBubbleTarget) {
                               if (!reasoningDone && reasoningText) {
@@ -2057,7 +2059,7 @@
                 jsonrpc: '2.0',
                 id: `ui-sse-${Date.now()}`,
                 method: 'tasks/events',
-                params: { task_id: taskId, cursor: '0' }
+                params: { task_id: taskId, session_id: sessionId, cursor: '0' }
             };
             
             const sseRes = await fetch(streamEndpoint, {
@@ -2168,7 +2170,8 @@
                         const answer = parsed.data?.answer || parsed.answer || '';
                         
                         if (answer && typeof answer === 'string') {
-                            const isMainBubbleTarget = a2uiEnabled ? (agent === 'supervisor') : (agent !== 'supervisor');
+                            // Supervisor의 최종 합성 응답은 항상 메인 버블에 표시하고, 서브 에이전트의 로우 데이터는 패널에 표시함
+                           const isMainBubbleTarget = (agent === 'supervisor');
 
                             if (isMainBubbleTarget) {
                                 // 1. 메인 답변 영역 (Main Bubble)

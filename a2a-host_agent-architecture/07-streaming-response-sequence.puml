@@ -1,92 +1,91 @@
 @startuml
 !pragma layout smetana
-title 07. Supervisor Agent Streaming Response Sequence (Python runtime)
+title 07. Supervisor Agent Streaming Response Sequence (Decoupled Enterprise Architecture)
 
 skinparam shadowing false
+skinparam sequenceMessageAlign center
+autonumber
 
 actor User
+
+box "API Tier" #E8F8F5
 participant "supervisor_a2a_endpoint" as Controller
 participant "supervisor_a2a_request_validator" as Validator
-participant "supervisor_agent_service" as Service
-participant "hitl_gate_service" as HitlGate
-participant "supervisor_stream_progress_service" as StreamProgress
-participant "supervisor_execution_service" as ExecutionService
-participant "supervisor_execution_persistence_service" as PersistenceFacade
-participant "supervisor_agent_orchestrator" as Orchestrator
-participant "supervisor_progress_publisher" as ProgressPublisher
+participant "supervisor_agent_service" as AgentService
+participant "task_event_stream_service" as EventService
+end box
+
+box "Message Broker (Redis)" #FDF2E9
+database "supervisor:task_queue" as TaskQueue
+database "supervisor:events" as EventStream
+end box
+
+box "Worker Tier" #F9E79F
+participant "EnterpriseWorker" as Worker
+participant "supervisor_graph_execution_service" as GraphExecution
+participant "supervisor_progress_publisher" as Publisher
 participant "supervisor_response_compose_service" as Composer
 participant "default_supervisor_llm_runtime" as Runtime
-participant "execution_completion_persistence_strategy" as CompletionStrategy
-participant "execution_consistency_coordinator" as Consistency
+end box
 
-User -> Controller : POST /a2a/supervisor\nAccept: text/event-stream\nJSON-RPC method:\nmessage/stream or SendStreamingMessage
-Controller -> Validator : precheck + validateSendParams
-Validator --> Controller : message + model
-Controller -> Service : streamEvents(session_id, message, model)
-Service -> StreamProgress : initialHitlEvaluationEvents(...)
-Service --> Controller : SupervisorOutputEvent(PROGRESS)
-Controller --> User : event: chunk
+== 1. Task Submission (Unary) ==
+User -> Controller : POST /a2a/supervisor\nJSON-RPC method:\nmessage/send or SendMessage
+Controller -> Validator : validate_request(params)
+Validator --> Controller : valid
+Controller -> AgentService : execute_task(session_id, message, request_id)
 
-Service -> HitlGate : evaluate(...)
-alt review required
-  Service -> HitlGate : openReview(...)
-  HitlGate -> PersistenceFacade : openReview(...)
-  PersistenceFacade -> Consistency : createWaitingReviewWithSnapshot(...)
-  Service -> StreamProgress : hitlRequiredEvents(...)
-  Service --> Controller : SupervisorOutputEvent(PROGRESS)
-  Service --> Controller : SupervisorOutputEvent(PROGRESS)
-  Controller --> User : event: chunk
-  Controller --> User : event: chunk
-  Controller --> User : event: done
-else review not required
-  Service -> StreamProgress : hitlPassedEvents(...)
-  Service -> ExecutionService : executeStreamEvents(...)
-  ExecutionService -> Orchestrator : executeEvents(...)
-  Orchestrator -> ProgressPublisher : emitEvent(...)
-  Orchestrator --> Controller : SupervisorOutputEvent(PROGRESS)
-  Controller --> User : event: chunk
+AgentService -> TaskQueue : LPUSH (Enqueue Plan)
+AgentService --> Controller : status: STREAMING\nstream_endpoint: /stream
+Controller --> User : JSON-RPC Response (TaskView)
 
-  Orchestrator -> Composer : streamComposeEvents(context)
-  Composer -> Runtime : stream(prompt, model, session_id)
-  Runtime --> Composer : AsyncIterator[SupervisorOutputEvent]
+== 2. Stream Subscription (SSE) ==
+User -> Controller : POST /a2a/supervisor/stream\nAccept: text/event-stream\nJSON-RPC method:\ntasks/events or TaskEvents
+Controller -> EventService : subscribe(session_id, task_id, cursor)
 
-  loop compose output
-    alt reasoning event
-      Composer --> Orchestrator : SupervisorOutputEvent(REASONING)
-      Orchestrator --> Controller : SupervisorOutputEvent(REASONING)
-      Controller --> User : event: reasoning
-    else text event
-      Composer --> Orchestrator : SupervisorOutputEvent(TEXT)
-      Orchestrator --> Controller : SupervisorOutputEvent(TEXT)
-      Controller --> User : event: chunk
-    else a2ui event
-      Composer --> Orchestrator : SupervisorOutputEvent(A2UI)
-      Orchestrator --> Controller : SupervisorOutputEvent(A2UI)
-      Controller --> User : event: a2ui
-    end
-  end
-
-  Orchestrator -> PersistenceFacade : persistCompletion(...)
-  PersistenceFacade -> CompletionStrategy : execute(command)
-  CompletionStrategy -> Consistency : completeExecution(...)
-  Orchestrator -> ProgressPublisher : emit completed progress
-  Orchestrator --> Controller : SupervisorOutputEvent(PROGRESS)
-  Controller --> User : event: chunk
-  Controller --> User : event: done
+loop Event Polling / Replay
+    EventService -> EventStream : XREAD (Tail or Replay)
+    EventStream --> EventService : event payload
+    EventService --> Controller : yield payload
+    Controller --> User : SSE chunk (event: chunk/reasoning/a2ui/done)
 end
 
+== 3. Background Execution & Event Publishing ==
+Worker -> TaskQueue : BRPOP
+TaskQueue --> Worker : task_msg
+Worker -> GraphExecution : execute_plan(session_id, task_id, plan)
+
+loop Graph Execution (Downstream Agent calls)
+    GraphExecution -> Publisher : publish_progress("calling_agent", data)
+    Publisher -> EventStream : XADD
+    GraphExecution -> Publisher : publish_chunk(agent_key, payload)
+    Publisher -> EventStream : XADD
+end
+
+GraphExecution -> Composer : stream_compose(results, context)
+Composer -> Runtime : astream(prompt)
+Runtime --> Composer : AsyncIterator[chunk]
+
+loop Stream LLM Response
+    Composer --> GraphExecution : yield (event_type, token)
+    alt event_type == "reasoning"
+        GraphExecution -> Publisher : publish_reasoning(token)
+    else event_type == "a2ui"
+        GraphExecution -> Publisher : publish_a2ui(token)
+    else event_type == "chunk"
+        GraphExecution -> Publisher : publish_chunk("supervisor", token)
+    end
+    Publisher -> EventStream : XADD
+end
+
+GraphExecution -> Publisher : publish_done(final_result)
+Publisher -> EventStream : XADD
+
 note right of Controller
-Current SSE framing
+Current SSE framing for Client
 - event: reasoning
 - event: chunk
 - event: a2ui
 - event: error
 - event: done
-- progress/reasoning are transport-only and not persisted as task payload
-
-Request method compatibility
-- legacy: message/stream
-- current: SendStreamingMessage
-- validator normalizes to one internal stream operation
 end note
 @enduml

@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 from ..schemas.jsonrpc import JsonRpcRequest
 from ..schemas.supervisor import SendMessageParams, ReviewDecideRequest, TaskEventsParams
-from ..domain.enums import Decision
+from ..domain.enums import Decision, ApiMethod
 from ..core.config import settings
 
 
@@ -15,15 +15,15 @@ class SupervisorA2ARequestValidator:
     def allowed_methods(self):
         # supervisor.yml의 host.a2a.method-allowlist를 사용 (진입점 전체 허용 목록)
         return settings.supervisor_config.get("method-allowlist", [
-            "message/send", "SendMessage",
+            ApiMethod.SEND_MESSAGE.value, ApiMethod.SEND_MESSAGE_LEGACY.value,
             "message/stream", "SendStreamingMessage",
             "tasks/get", "GetTask",
             "tasks/list", "ListTasks",
             "tasks/cancel", "CancelTask",
-            "tasks/events", "TaskEvents",
-            "tasks/review/get",
-            "tasks/review/decide",
-            "agent/card"
+            ApiMethod.TASK_EVENTS.value, ApiMethod.TASK_EVENTS_LEGACY.value,
+            ApiMethod.REVIEW_GET.value, ApiMethod.REVIEW_GET_LEGACY.value,
+            ApiMethod.REVIEW_DECIDE.value, ApiMethod.REVIEW_DECIDE_LEGACY.value,
+            ApiMethod.AGENT_CARD.value, ApiMethod.AGENT_CARD_LEGACY.value
         ])
 
     async def validate_request(self, request: JsonRpcRequest):
@@ -32,17 +32,17 @@ class SupervisorA2ARequestValidator:
             raise ValueError(f"Method {request.method} not allowed")
 
         # 2. Params schema validation
-        if request.method in ["message/send", "SendMessage"]:
+        if request.method in [ApiMethod.SEND_MESSAGE.value, ApiMethod.SEND_MESSAGE_LEGACY.value]:
             if not request.params:
                 raise ValueError("Params required for SendMessage")
             SendMessageParams(**request.params)
             
-        elif request.method == "tasks/review/decide":
+        elif request.method in [ApiMethod.REVIEW_DECIDE.value, ApiMethod.REVIEW_DECIDE_LEGACY.value]:
             if not request.params:
                 raise ValueError("Params required for ReviewDecide")
             ReviewDecideRequest(**request.params)
             
-        elif request.method in ["tasks/events", "TaskEvents"]:
+        elif request.method in [ApiMethod.TASK_EVENTS.value, ApiMethod.TASK_EVENTS_LEGACY.value]:
             if not request.params:
                 raise ValueError("Params required for TaskEvents")
             TaskEventsParams(**request.params)

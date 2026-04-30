@@ -1,0 +1,63 @@
+@startuml
+!pragma layout smetana
+title 01. Sub-agent System Context (Python Enterprise Architecture)
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+actor "Supervisor Agent" as Supervisor
+actor "Direct User" as User
+
+rectangle "mcp-orchestrator (Sub-agent)" {
+  package "API Runtime" #E8F8F5 {
+    [chat.router] as api_agent
+    [a2a_router] as api_a2a
+    [AgentChatUseCase] as usecase
+    [AgentReader] as reader
+  }
+
+  package "Worker Runtime" #F9E79F {
+    [WorkerExecutionService] as worker
+    [AgentExecutor] as executor
+    [RedisAdapter] as adapter
+  }
+
+  [LlmPlanner] as planner
+  [McpExecutor] as tool_exec
+  [LlmComposer] as composer
+  [AgentPersistence] as persistence
+}
+
+database "Redis" as Redis {
+  [task_queue]
+  [event_stream]
+  [session_store]
+}
+
+cloud "LLM Providers" as LLM
+node "MCP Servers" as MCP
+
+User --> api_agent
+Supervisor --> api_a2a
+
+api_agent --> usecase
+api_a2a --> usecase
+usecase --> task_queue : enqueue
+usecase --> reader : query state
+
+worker --> task_queue : dequeue
+worker --> executor : execute
+executor --> planner
+executor --> tool_exec
+executor --> composer
+executor --> persistence
+executor --> adapter : publish progress
+
+adapter --> event_stream : publish progress
+persistence --> session_store : atomic save
+
+planner --> LLM
+composer --> LLM
+tool_exec --> MCP
+
+@enduml

@@ -1,9 +1,10 @@
 @startuml
-title 06. Supervisor A2A Request Sequence (Python target architecture, 2026-04-25)
+title 06. Supervisor A2A Request Sequence (Detailed Enterprise Architecture, 2026-04-27)
 
 skinparam shadowing false
 skinparam sequenceMessageAlign center
 skinparam ParticipantPadding 20
+autonumber
 
 actor User
 participant "supervisor_a2a_endpoint" as Controller
@@ -12,112 +13,127 @@ participant "supervisor_agent_service" as AgentService
 participant "supervisor_request_idempotency_service" as Idempotency
 participant "supervisor_pre_hitl_a2ui_service" as PreHitlA2ui
 participant "hitl_gate_service" as HitlGate
-participant "supervisor_execution_service" as ExecutionService
-participant "supervisor_review_application_service" as ReviewApp
+participant "task_queue_service" as TaskQueue #FFEBCF
 participant "supervisor_execution_persistence_service" as PersistenceFacade
 participant "execution_consistency_coordinator" as Consistency
 participant "task_event_stream_service" as TaskEventStream
-participant "supervisor_agent_orchestrator" as Orchestrator
+database "Redis (Queue/Stream/Store)" as Redis
+
+box "Background Worker Tier" #F9F9F9
+participant "worker.py" as Worker #EFE1FF
 participant "supervisor_graph_execution_service" as GraphExecution
 participant "LangGraph CompiledGraph" as Graph
 participant "a2a_invocation_service" as Invoker
 participant "supervisor_response_compose_service" as Composer
+end box
+
 participant "Downstream A2A Agents" as DownstreamAgents
 
-User -> Controller : POST /a2a/supervisor\nJSON-RPC method:\nmessage/send or SendMessage\nmessage/stream or SendStreamingMessage
-Controller -> Validator : precheck + validate params
+== 1. Task Submission (API Tier) ==
 
-alt unary send
-  Controller -> AgentService : send(...)
-  AgentService -> Idempotency : executeOnce(...)
-  AgentService -> PreHitlA2ui : build(session_id, message, model)
+User -> Controller : POST /a2a/supervisor\n(SendMessage, SendStreamingMessage)
+activate Controller
 
-  alt pre-HITL A2UI resolved
-    AgentService -> PersistenceFacade : persistCompletion(...A2UI payload...)
-    PersistenceFacade -> Consistency : completeExecution(...)
-    AgentService --> Controller : JSON-RPC TaskView
-  else normal execution path
-    AgentService -> HitlGate : planAndAssessReview(...)
-    alt HITL required
-      AgentService -> HitlGate : openReview(...)
-      HitlGate -> PersistenceFacade : openReview(...)
-      PersistenceFacade -> Consistency : createWaitingReviewWithSnapshot(...)
-      AgentService --> Controller : WAITING_REVIEW task
-    else HITL passed
-      AgentService -> ExecutionService : executeSync(...)
-      ExecutionService -> PersistenceFacade : startExecution(...)
-      ExecutionService -> Orchestrator : executeEvents(...)
-      Orchestrator -> GraphExecution : execute(...)
-      GraphExecution -> Graph : invoke(routingSelectedState)
-      Graph -> Invoker : invoke(selected batch)
-      Invoker -> DownstreamAgents : invoke\nmessage/send or SendMessage\nmessage/stream or SendStreamingMessage
-      DownstreamAgents --> Invoker : downstream results
-      Orchestrator -> Composer : streamComposeEvents(context)
-      Composer --> Orchestrator : text / a2ui events
-      ExecutionService -> PersistenceFacade : persistCompletion(...)
-      PersistenceFacade -> Consistency : completeExecution(...)
-      AgentService --> Controller : JSON-RPC TaskView
-    end
-  end
-else stream request
-  Controller -> AgentService : streamEvents(...)
-  AgentService -> PreHitlA2ui : build(...)
-  alt pre-HITL A2UI resolved
-    AgentService --> Controller : progress + text + a2ui SSE
-  else normal stream path
-    AgentService -> HitlGate : planAndAssessReview(...)
-    alt HITL required
-      HitlGate -> PersistenceFacade : openReview(...)
-      PersistenceFacade -> Consistency : createWaitingReviewWithSnapshot(...)
-      AgentService --> Controller : waiting review progress stream
-    else HITL passed
-      AgentService -> ExecutionService : executeStreamEvents(...)
-      ExecutionService -> PersistenceFacade : startExecution(...)
-      ExecutionService -> Orchestrator : executeEvents(...)
-      Orchestrator -> GraphExecution : execute(...)
-      GraphExecution -> Graph : invoke(routingSelectedState)
-      Graph -> Invoker : invoke(selected batch)
-      Invoker -> DownstreamAgents : invoke\nmessage/send or SendMessage\nmessage/stream or SendStreamingMessage
-      DownstreamAgents --> Invoker : downstream results
-      Orchestrator -> Composer : streamComposeEvents(context)
-      Composer --> Controller : SupervisorOutputEvent SSE
-    end
-  end
-else review endpoints
-  User -> Controller : tasks/review/decide\nminimum fields:\ntask_id, decision(APPROVE|CANCEL)
-  Controller -> AgentService : getReview / decideReview / decideReviewStream
-  AgentService -> ReviewApp : delegate review use case
-  ReviewApp -> HitlGate : decideWithSnapshotVerification(...)
-  alt approve verified and drift safe
-    ReviewApp -> PersistenceFacade : startApprovedResume(...)
-    PersistenceFacade -> Consistency : startApprovedResume(...)
-    Consistency -> TaskEventStream : reserve durable initial_cursor
-    ReviewApp -> ExecutionService : resumeApprovedSnapshot(...)
-    ReviewApp --> Controller : approve ack(task_id, state_version,\nexecution_mode, resume_accepted,\nstream_resume_required, initial_cursor)
-    note right of Controller
-    STREAM resume rule:
-    - server snapshot is the verification source of truth
-    - approve ack is not the resumed runtime stream
-    - do not continue original SSE connection
-    - client re-subscribes by task_id + initial_cursor
-    - runtime stream is delivered on task event stream
-    - replayable events after approve are not lost
-    end note
-  else approve rejected or review reopened
-    ReviewApp --> Controller : resume_rejected(reason_code)\nor reopen review response
-  end
+Controller -> Validator : validate_request(params)
+activate Validator
+Validator --> Controller : valid
+deactivate Validator
+
+Controller -> AgentService : execute_task(session_id, message)
+activate AgentService
+
+AgentService -> Idempotency : executeOnce(request_id)
+note right: Prevents duplicate task creation
+
+AgentService -> HitlGate : evaluate_and_open_review(...)
+activate HitlGate
+HitlGate -> HitlGate : plan(user_input)
+HitlGate -> PersistenceFacade : persist_review_open(...)
+PersistenceFacade -> Consistency : createWaitingReviewWithSnapshot(...)
+Consistency -> Redis : MULTI/EXEC (Atomic Save)
+HitlGate --> AgentService : review_required, plan
+deactivate HitlGate
+
+AgentService -> PreHitlA2ui : build_pre_hitl_form(plan)
+activate PreHitlA2ui
+PreHitlA2ui --> AgentService : a2ui_form (if any)
+deactivate PreHitlA2ui
+
+alt review_required
+    AgentService --> Controller : status: WAITING_REVIEW
+else normal path / direct answer
+    AgentService -> TaskQueue : enqueue_task(session_id, task_id, plan)
+    activate TaskQueue
+    TaskQueue -> Redis : LPUSH supervisor:task_queue
+    TaskQueue --> AgentService : ack
+    deactivate TaskQueue
+    AgentService --> Controller : status: STREAMING + stream_endpoint
 end
 
-Controller --> User : JSON-RPC or SSE(chunk/a2ui/done)
+deactivate AgentService
+Controller --> User : JSON-RPC Response (TaskView)
+deactivate Controller
 
-note right of Controller
-Compatibility
-- legacy: message/send, message/stream,
-  tasks/get, tasks/list, tasks/cancel
-- current: SendMessage, SendStreamingMessage,
-  GetTask, ListTasks, CancelTask
-- validator/endpoint normalize both families
-- endpoint is the final SSE adapter only; internal flow stays typed event based
-end note
+== 2. Background Execution (Worker Tier) ==
+
+Worker -> Redis : BRPOP supervisor:task_queue (polling)
+activate Worker
+Redis --> Worker : task_msg {session_id, task_id, plan}
+
+Worker -> GraphExecution : execute_plan(session_id, task_id, plan)
+activate GraphExecution
+
+GraphExecution -> Graph : invoke(state)
+activate Graph
+
+loop invoke / handoff cycle
+    Graph -> Invoker : invoke(agent_key, method, args)
+    activate Invoker
+    Invoker -> DownstreamAgents : JSON-RPC Request
+    DownstreamAgents --> Invoker : Result
+    Invoker --> Graph : DownstreamCallResult
+    deactivate Invoker
+end
+
+Graph --> GraphExecution : final_state
+deactivate Graph
+
+GraphExecution -> Composer : stream_compose(final_state)
+activate Composer
+Composer -> TaskEventStream : append_event(chunk / a2ui / done)
+TaskEventStream -> Redis : XADD supervisor:events (Cursor Gen)
+Composer --> GraphExecution : completion
+deactivate Composer
+
+GraphExecution -> PersistenceFacade : persist_execution_completion(...)
+PersistenceFacade -> Consistency : completeExecution(...)
+Consistency -> Redis : MULTI/EXEC (Final State Update)
+
+deactivate GraphExecution
+deactivate Worker
+
+== 3. Review Approval & Resume ==
+
+User -> Controller : tasks/review/decide (APPROVE)
+activate Controller
+Controller -> AgentService : handle_review_decision(APPROVE)
+activate AgentService
+
+AgentService -> PersistenceFacade : start_approved_resume(...)
+activate PersistenceFacade
+PersistenceFacade -> Consistency : start_approved_resume (CAS)
+Consistency -> Redis : WATCH task_version / MULTI / EXEC
+Consistency -> TaskEventStream : get_initial_cursor
+Consistency --> PersistenceFacade : resume_data {initial_cursor, version}
+PersistenceFacade --> AgentService : success
+deactivate PersistenceFacade
+
+AgentService -> TaskQueue : enqueue_task(frozen_plan)
+note right: Execution handed back to Worker
+
+AgentService --> Controller : approve_ack {initial_cursor}
+deactivate AgentService
+Controller --> User : JsonRpcResponse
+deactivate Controller
 
 @enduml

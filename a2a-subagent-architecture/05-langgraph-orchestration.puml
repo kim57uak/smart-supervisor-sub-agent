@@ -1,0 +1,42 @@
+@startuml
+!pragma layout smetana
+title 05. LangGraph Orchestration (Final Implementation)
+
+skinparam shadowing false
+skinparam state {
+  BackgroundColor<<Node>> #E8F8F5
+  BorderColor<<Node>> #16A085
+}
+
+state "AgentState" as State {
+  task_id: str
+  session_id: str
+  trace_id: str
+  user_message: str
+  history: List[Message]
+  plans: List[ToolPlan]
+  results: List[Dict]
+  final_answer: str
+  status: ProcessStatus
+  loop_count: int
+}
+
+[*] --> load_context
+load_context <<Node>> --> select_tools
+select_tools <<Node>> --> should_continue <<choice>>
+
+should_continue --> execute_tools : continue
+should_continue --> compose_response : end (max iterations or no plans)
+
+execute_tools <<Node>> --> finalize_context
+finalize_context <<Node>> --> select_tools : loop
+
+compose_response <<Node>> --> [*]
+
+note right of load_context: _load_context()
+note right of select_tools: _select_tools()
+note right of execute_tools: _execute_tools()
+note right of finalize_context: _finalize_context()
+note right of compose_response: _compose_response()
+
+@enduml

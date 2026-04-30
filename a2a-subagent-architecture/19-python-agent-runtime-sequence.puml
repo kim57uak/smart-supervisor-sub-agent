@@ -1,0 +1,47 @@
+@startuml
+!pragma layout smetana
+title 19. Python Agent Runtime Sequence (Final Implementation)
+
+skinparam shadowing false
+
+actor User
+participant "chat.router" as Endpoint
+participant "AgentAuthorizationService" as AuthService
+participant "AgentChatUseCase" as ChatUseCase
+participant "RedisAdapter" as Redis
+participant "WorkerExecutionService" as Worker
+participant "AgentExecutor" as Executor
+participant "WorkflowFactory" as GraphFactory
+participant "LlmPlanner" as Planner
+participant "McpExecutor" as ToolExec
+participant "LlmComposer" as Composer
+participant "LlmRuntime" as Runtime
+participant "McpToolRegistry" as ToolRegistry
+
+User -> Endpoint : request(session_id)
+Endpoint -> AuthService : assert_authorized(session_id, scope)
+AuthService --> Endpoint : ok
+Endpoint -> ChatUseCase : handle_chat_request(request)
+ChatUseCase -> Redis : enqueue(Task)
+ChatUseCase --> Endpoint : task_id
+Endpoint --> User : 202 Accepted
+
+note over Worker, Runtime : Background Worker Flow
+
+Worker -> Redis : dequeue()
+Worker -> Executor : execute(task)
+Executor -> GraphFactory : create_graph()
+GraphFactory --> Executor : graph
+Executor -> Planner : plan(context)
+Planner -> Runtime : generate_tool_plan
+Runtime --> Planner : ToolPlan
+Executor -> ToolExec : execute(plan)
+ToolExec -> ToolRegistry : call_mcp_tool
+ToolRegistry --> ToolExec : ToolResult
+Executor -> Composer : stream_compose(context)
+Composer -> Runtime : generate_final_response
+Runtime --> Composer : AiChatChunk
+Composer --> Executor : AiChatChunk
+Executor -> Redis : publish(Progress/Chunk)
+
+@enduml

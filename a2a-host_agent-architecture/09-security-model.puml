@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-title 09. Supervisor Agent Security Model (Python runtime)
+title 09. Supervisor Agent Security & Integrity Model (Advanced implementation)
 
 skinparam shadowing false
 skinparam componentStyle rectangle
@@ -8,72 +8,46 @@ skinparam componentStyle rectangle
 rectangle "Input Guard" {
   [supervisor_a2a_endpoint] as Controller
   [supervisor_a2a_request_validator] as Validator
-  [prompt_injection_guard] as PromptGuard
 }
 
-rectangle "Task / Review Ownership Guard" {
-  [supervisor_agent_service] as Service
-  [supervisor_a2a_lifecycle_service] as Lifecycle
-  [hitl_decision_service] as HitlDecision
+rectangle "Audit & Integrity Guard" {
+  [SnapshotVerificationQuery] as Auditor #FDF2E9
+  [PlanHashCalculator] as HashGen
 }
 
 rectangle "Routing & Invocation Guard" {
-  [A2AClientRegistry] as Registry
-  [Allowed Route Config] as Allowlist
-  [default_a2a_invocation_service] as Invoker
-  [handoff_policy_service] as HandoffPolicy
-  [Allowed Method Guard] as MethodGuard
-  [Streaming Capability Guard] as StreamGuard
-  [Retry/Timeout Policy] as RetryTimeout
+  [DefaultA2AInvocationService] as Invoker
   [Circuit Breaker] as CircuitBreaker
 }
 
 rectangle "State Integrity" {
-  [supervisor_swarm_coordinator] as SwarmCoordinator
-  [Swarm State Version Check] as SwarmVersion
-  [Review Store] as ReviewStore
+  [ExecutionConsistencyCoordinator] as Consistency
+  [Redis CAS (WATCH/MULTI/EXEC)] as CAS
 }
 
-rectangle "Error Safety" {
-  [supervisor_exception_handler] as ErrorHandler
-}
+Controller --> Validator : validate_request
+Validator --> Auditor : session_id / task_id / request_params
 
-Controller --> Validator : method/params/schema
-Controller --> PromptGuard : sanitize message text
-Validator --> Service : normalize text/A2UI userAction
-Service --> Lifecycle : session-owned task read/cancel/list
-Service --> HitlDecision : session-owned review get/decide
-Invoker --> Registry : resolve target
-Registry --> Allowlist : validate agent key / endpoint / method
-Invoker --> RetryTimeout : bounded retry/backoff
+Auditor --> HashGen : recalculate request_hash\ncompare with frozen_plan_hash
+Auditor --> Auditor : Session Ownership Check\nState Version Check (Optimistic Lock)
+Auditor --> Auditor : TTL Verification\nPlan Drift Policy (Retired Agent Check)
+
 Invoker --> CircuitBreaker : fail-fast on repeated errors
-HandoffPolicy --> MethodGuard : allowMethods check
-HandoffPolicy --> StreamGuard : downstream stream support check
-SwarmCoordinator --> SwarmVersion : optimistic lock + retry
-HitlDecision --> ReviewStore : session-bound review ownership
-ErrorHandler --> Invoker : sanitize runtime failures
+Invoker --> Auditor : implicit allowlist via routing config
 
-note right of Validator
-Current input handling
-- legacy messageText
-- v1.0 message.parts[].text
-- application/json+a2ui userAction
-- invalid decision values rejected before service
+Consistency --> CAS : atomic state transition\nversion increment
+
+note right of Auditor
+Advanced Integrity Checks (Doc 31):
+- request_hash mismatch -> tamper detected
+- frozen_plan_hash mismatch -> drift detected
+- resume_token mismatch -> invalid resume
+- agent_retired check -> security drift block
 end note
 
-note right of HandoffPolicy
-Current handoff hardening
-- feature flag
-- route allowlist only
-- method allowlist only
-- recent path duplicate block
-- max hops
-end note
-
-note bottom of ErrorHandler
-No sensitive leak
-- internal stack traces
-- downstream raw HTTP details
-- credentials / provider internals
+note bottom of Consistency
+Ensures task execution order and 
+prevents double-approval or 
+race conditions between workers.
 end note
 @enduml
