@@ -1,6 +1,6 @@
 # 17. Supervisor Package / Class Specification
 
-Updated: 2026-04-28 (Refined implementation sync)
+Updated: 2026-04-30 (Refined implementation sync)
 Source baseline: `src/app`
 
 ## Target Baseline
@@ -26,35 +26,41 @@ src/app
 │   └── store/        # Redis 기반 저장소 어댑터
 ├── api/              # FastAPI Routers
 ├── application/      # 비즈니스 로직 (CQRS)
-│   ├── execution/    # 유즈케이스 및 실행 제어
+│   ├── execution/    # 유즈케이스 및 실행 제어 (SupervisorAgentService, TaskQueueService)
 │   ├── persistence/  # 상태 변경 및 일관성 관리
-│   └── read/         # 상태 조회 및 검증
+│   └── read/         # 상태 조회 및 검증 (SnapshotVerificationQuery)
 ├── common/           # 유틸리티 (Canonical JSON, Hashing)
 ├── domain/           # 엔티티, VO, Enums
 ├── infrastructure/   # 외부 연동 기초 (Redis Client, LLM Runtime)
 ├── ports/            # 추상 인터페이스 정의
 ├── schemas/          # Pydantic 요청/응답 스키마
-└── services/         # 도메인 서비스 (Validator, Security Guard)
+└── services/         # 도메인 서비스 (FactGovernanceService, PromptInjectionGuard)
 ```
 
 ## Core Modules / Components
 
 ### Execution Tier
 - **`SupervisorAgentService`**: API 진입점 오케스트레이터. 멱등성 체크 및 작업 큐잉 담당.
-- **`HitlGateService`**: 리뷰 필요성 평가 및 계획 동결(Freeze).
-- **`SupervisorGraphExecutionService`**: 워커 내부의 실제 오케스트레이터. 그래프 실행 및 결과 합성 제어.
+- **`HitlGateService`**: 리뷰 필요성 평가 및 계획 동결(Freeze). `PromptInjectionGuard`와 연동.
+- **`TaskQueueService`**: Redis 기반의 신뢰할 수 있는 작업 큐 (Producer-Consumer) 관리.
+- **`WorkerExecutionService`**: 백그라운드 워커 내부의 실행 오케스트레이터.
+- **`SupervisorGraphExecutionService`**: LangGraph 기반의 실제 오케스트레이터. 그래프 실행 및 결과 합성 제어.
 - **`SupervisorProgressPublisher`**: 진행 상태 이벤트를 Redis Stream으로 발행.
 
 ### Persistence & Read Tier
 - **`ExecutionConsistencyCoordinator`**: Redis `WATCH/MULTI/EXEC` 기반 원자적 상태 전이.
 - **`SupervisorExecutionPersistenceService`**: 상태 변경 시나리오별 전략(Strategy) 관리 Facade.
 - **`SupervisorReadFacade`**: 복합 쿼리 및 검증 로직 진입점.
-- **`SnapshotVerificationQuery`**: 승인 전 스냅샷 무결성 및 드리프트 검증.
+- **`SnapshotVerificationQuery`**: 승인 전 스냅샷 무결성, `frozen_plan_hash`, `resume_token` 및 드리프트 검증.
+
+### Services & Guard Tier
+- **`PromptInjectionGuard`**: 정규표현식 및 패턴 매칭을 통한 시스템 프롬프트 보호 및 인젝션 방지.
+- **`FactGovernanceService`**: Swarm 상태(Shared Facts)의 무결성 및 업데이트 규칙 관리.
 
 ### Orchestration & Integration
 - **`LangGraphSupervisorStateGraphFactory`**: LangGraph 노드 및 엣지 정의.
 - **`DefaultA2AInvocationService`**: 서킷 브레이커가 포함된 표준 A2A 통신.
-- **`LlmSupervisorResponseComposeService`**: 지능형 응답 합성.
+- **`LlmSupervisorResponseComposeService`**: 지능형 응답 합성 및 A2UI 렌더링 지시.
 
 ## Key Models (domain/models.py)
 

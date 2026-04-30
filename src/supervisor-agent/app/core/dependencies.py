@@ -121,9 +121,10 @@ async def get_supervisor_graph_execution_service(
     progress_publisher: SupervisorProgressPublisher = Depends(get_progress_publisher),
     persistence_facade: SupervisorExecutionPersistenceService = Depends(get_persistence_facade),
     compose_service: LlmResponseComposeService = Depends(get_compose_service),
-    fact_service: FactGovernanceService = Depends(get_fact_service)
+    fact_service: FactGovernanceService = Depends(get_fact_service),
+    task_store: RedisTaskStore = Depends(get_task_store)
 ) -> SupervisorGraphExecutionService:
-    graph_factory = LangGraphStateGraphFactory(invocation_service, handoff_service, progress_publisher, fact_service)
+    graph_factory = LangGraphStateGraphFactory(invocation_service, handoff_service, progress_publisher, fact_service, task_store)
     return SupervisorGraphExecutionService(graph_factory, persistence_facade, compose_service, progress_publisher)
 
 async def get_supervisor_agent_service(
@@ -166,9 +167,9 @@ async def get_worker_execution_service() -> WorkerExecutionService:
     swarm_state_store = RedisSwarmStateStore()
     fact_service = FactGovernanceService(swarm_state_store)
     
-    graph_factory = LangGraphStateGraphFactory(invocation_service, handoff_service, publisher, fact_service)
-    
     task_store = RedisTaskStore()
+    graph_factory = LangGraphStateGraphFactory(invocation_service, handoff_service, publisher, fact_service, task_store)
+    
     snapshot_store = RedisExecutionSnapshotStore()
     coordinator = ExecutionConsistencyCoordinator(task_store, snapshot_store, swarm_state_store, redis)
     persistence_factory = PersistenceStrategyFactory(coordinator, event_service)

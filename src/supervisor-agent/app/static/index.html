@@ -1618,6 +1618,7 @@
 
         if (decideRes.result && decideRes.result.stream_endpoint) {
             a2uiEnabled = !!decideRes.result.a2ui_enabled;
+            activeStreamTaskId = taskId;
             const streamEndpoint = decideRes.result.stream_endpoint;
             const cursor = decideRes.result.initial_cursor;
             
@@ -1673,6 +1674,7 @@
                       setStatus(eventType === 'done' ? '처리 완료' : '에러 발생', eventType === 'done' ? 'complete' : 'error');
                       ai.panel.classList.add('collapsed');
                       ai.toggle.textContent = '펼치기';
+                      activeStreamTaskId = '';
                       return;
                   }
                   
@@ -2042,6 +2044,7 @@
         
         if (rpcRes.result && rpcRes.result.status === "WAITING_REVIEW") {
             a2uiEnabled = !!rpcRes.result.a2ui_enabled;
+            activeStreamTaskId = rpcRes.result.task_id;
             showHitlReviewPanel(ai, rpcRes.result.review_reason || '사용자 승인이 필요합니다.', rpcRes.result.task_id);
             setStatus('사용자 승인 대기 중', 'pending');
             return;
@@ -2050,6 +2053,7 @@
         // STREAMING: subscribe to SSE for real-time token streaming
         if (rpcRes.result && rpcRes.result.status === "STREAMING") {
             a2uiEnabled = !!rpcRes.result.a2ui_enabled;
+            activeStreamTaskId = rpcRes.result.task_id;
             const taskId = rpcRes.result.task_id;
             const streamEndpoint = rpcRes.result.stream_endpoint || '/a2a/supervisor/stream';
             
@@ -2129,6 +2133,7 @@
                         }
                         await enhanceBubble(ai.bubble);
                         setStatus(eventType === 'done' ? '완료' : '에러', eventType === 'done' ? 'complete' : 'error');
+                        activeStreamTaskId = '';
                         streaming = false;
                         return;
                     }
@@ -2239,9 +2244,22 @@
     });
     clearBtn.addEventListener('click', async () => {
       try {
+        if (activeStreamTaskId) {
+          await cancelActiveStreamTask();
+        }
         if (abortController) abortController.abort();
-        sessionId = 'sess-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        
+        // Rationale (Why): session/clear API deletes conversation and swarm state in Redis 
+        // for the fixed sessionId, ensuring a clean start without changing the auth-related ID.
+        const clearRes = await rpcCall('session/clear', { session_id: sessionId });
+        if (clearRes?.error) {
+            console.warn('Server-side session clear failed:', clearRes.error);
+        }
+
         chatEl.innerHTML = '';
+        activeStreamTaskId = '';
+        streaming = false;
+        
         setStatus('초기화됨', 'ready');
         addMessage('ai', '세션 히스토리를 초기화했습니다.');
       } catch (e) {

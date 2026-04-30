@@ -23,6 +23,9 @@ host:
       - tasks/review/decide
       # agent card
       - agent/card
+      # session operations
+      - session/clear
+      - ClearSession
     # Supervisor -> downstream A2A agent 라우팅 설정
     routing:
       # Planning 단계에서 agentKey=product로 선택될 때 호출 대상

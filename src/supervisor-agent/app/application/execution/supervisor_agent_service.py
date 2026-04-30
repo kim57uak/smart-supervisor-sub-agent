@@ -75,6 +75,7 @@ class SupervisorAgentService:
 
         if self._is_direct_answer(plan):
             log.info("task_state_transition", mode="direct_answer_shortcut")
+            await self.persistence_facade.persist_task_start(session_id, task_id)
             asyncio.create_task(
                 self.graph_execution.execute_direct_answer(
                     session_id, task_id, {"message": message, "reasoning": plan.planner_metadata.get("reasoning", "")}
@@ -84,6 +85,7 @@ class SupervisorAgentService:
 
         # 4. Default: Async Execution via Worker
         log.info("task_state_transition", to_state=TaskState.RUNNING.value)
+        await self.persistence_facade.persist_task_start(session_id, task_id)
         plan_data = plan.model_dump(mode="json") if hasattr(plan, "model_dump") else plan
         await self.task_queue.enqueue_task(session_id, task_id, plan_data)
         
@@ -104,9 +106,40 @@ class SupervisorAgentService:
 
         if request.decision.value == "CANCEL":
             log.info("review_cancelled")
+            await self.persistence_facade.cancel_task(session_id, task_id)
             return True, ReasonCode.SUCCESS, None
 
         return await self._process_approval(session_id, task_id, log)
+
+    async def cancel_task(self, session_id: str, task_id: str) -> bool:
+        """Explicitly cancel a task."""
+        log = logger.bind(session_id=session_id, task_id=task_id)
+        success = await self.persistence_facade.cancel_task(session_id, task_id)
+        if success:
+            log.info("task_cancelled_successfully")
+        else:
+            log.warning("task_cancel_failed_or_already_terminal")
+        return success
+
+    async def clear_session(self, session_id: str) -> bool:
+        """Clears all session data (conversation and swarm state) for a fixed session ID."""
+        log = logger.bind(session_id=session_id)
+        try:
+            # 1. Clear Conversation History
+            from ...core.dependencies import get_conversation_store
+            conv_store = await get_conversation_store()
+            await conv_store.delete_messages(session_id)
+            
+            # 2. Clear Swarm State
+            from ...core.dependencies import get_swarm_state_store
+            swarm_store = await get_swarm_state_store()
+            await swarm_store.delete_swarm_state(session_id)
+            
+            log.info("session_cleared_successfully")
+            return True
+        except Exception as e:
+            log.error("session_clear_failed", error=str(e))
+            return False
 
     def _is_direct_answer(self, plan: Any) -> bool:
         return plan.planner_metadata.get("direct_answer", False) or not plan.routing_queue

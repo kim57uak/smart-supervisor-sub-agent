@@ -15,6 +15,12 @@ class SupervisorExecutionPersistenceService:
         strategy = self.strategy_factory.get_strategy("review_open")
         await strategy.execute(task_id, session_id=session_id, snapshot=snapshot, ttl=ttl)
 
+    async def persist_task_start(self, session_id: str, task_id: str):
+        """
+        Persists the initial RUNNING state for a task.
+        """
+        await self.strategy_factory.coordinator.transition_to_running(session_id, task_id)
+
     async def persist_approved_resume(self, session_id: str, task_id: str, expected_version: int) -> Dict[str, Any]:
         strategy = self.strategy_factory.get_strategy("approved_resume")
         return await strategy.execute(task_id, session_id=session_id, expected_version=expected_version)
@@ -28,3 +34,9 @@ class SupervisorExecutionPersistenceService:
         Loads agent shared state for the session (Doc 03).
         """
         return await self.strategy_factory.coordinator.load_swarm_state(session_id)
+
+    async def cancel_task(self, session_id: str, task_id: str) -> bool:
+        """
+        Cancels the task via the consistency coordinator.
+        """
+        return await self.strategy_factory.coordinator.cancel_task(session_id, task_id)

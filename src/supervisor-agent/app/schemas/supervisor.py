@@ -46,3 +46,9 @@ class TaskEventsParams(BaseModel):
     session_id: Optional[str] = None
     cursor: Optional[str] = None
     replay: bool = True
+
+
+class CancelTaskRequest(BaseModel):
+    id: str  # task_id
+    reason: Optional[str] = None
+    session_id: Optional[str] = None

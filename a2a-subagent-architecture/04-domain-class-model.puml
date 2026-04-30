@@ -69,6 +69,7 @@ package "Domain (models.py)" {
 
   class ToolPlan {
     +tool_name: str
+    +server_name: str
     +arguments: Dict
     +reasoning: str
   }

@@ -5,6 +5,7 @@ from ...domain.models import FrozenExecutionPlan, FrozenRoutingStep
 from ...ports.integration_ports import A2AInvocationService
 from ...application.execution.supervisor_progress_publisher import SupervisorProgressPublisher
 from ...services.fact_governance_service import FactGovernanceService
+from ...domain.enums import TaskState
 
 import structlog
 logger = structlog.get_logger()
@@ -34,12 +35,14 @@ class LangGraphStateGraphFactory(StateGraphFactory):
         invocation_service: A2AInvocationService,
         handoff_service: HandoffPolicyService,
         progress_publisher: SupervisorProgressPublisher,
-        fact_service: Optional[FactGovernanceService] = None
+        fact_service: Optional[FactGovernanceService] = None,
+        task_store: Any = None
     ):
         self.invocation_service = invocation_service
         self.handoff_service = handoff_service
         self.progress_publisher = progress_publisher
         self.fact_service = fact_service
+        self.task_store = task_store
 
     def create_graph(self):
         workflow = StateGraph(AgentState)
@@ -115,6 +118,16 @@ class LangGraphStateGraphFactory(StateGraphFactory):
         A2A_CALLING: Invokes the downstream agent.
         Publishes progress events as per Doc 26.
         """
+        # Rationale (Why): Check for external cancellation before starting a potentially 
+        # long-running downstream invocation.
+        if self.task_store:
+            task_data = await self.task_store.get_task(state["session_id"], state["task_id"])
+            if task_data and task_data.get("state") == TaskState.CANCELED.value:
+                logger.info("task_execution_aborted_due_to_cancellation", task_id=state["task_id"])
+                # We stop the graph by returning the state but with current_step cleared
+                state["current_step"] = None
+                return state
+
         step = state["current_step"]
         if not step:
             return state

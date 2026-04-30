@@ -7,6 +7,9 @@ class ConversationStore(Protocol):
 
     async def get_messages(self, session_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         ...
+        
+    async def delete_messages(self, session_id: str):
+        ...
 
 class GraphCheckpointStore(Protocol):
     async def save_checkpoint(self, session_id: str, task_id: str, checkpoint_data: Dict[str, Any]):
@@ -35,4 +38,7 @@ class SwarmStateStore(Protocol):
         ...
 
     async def get_swarm_state(self, session_id: str) -> Optional[Dict[str, Any]]:
+        ...
+
+    async def delete_swarm_state(self, session_id: str):
         ...

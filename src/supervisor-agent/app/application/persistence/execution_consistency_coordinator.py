@@ -63,6 +63,17 @@ class ExecutionConsistencyCoordinator:
         })
         await self.redis.expire(task_key, settings.redis_ttl_seconds)
 
+    async def transition_to_running(self, session_id: str, task_id: str):
+        """Move to RUNNING state for a new task."""
+        task_key = self._get_task_key(session_id, task_id)
+        await self.redis.hset(task_key, mapping={
+            "task_id": task_id,
+            "session_id": session_id,
+            "state": TaskState.RUNNING.value,
+            "version": 0
+        })
+        await self.redis.expire(task_key, settings.redis_ttl_seconds)
+
     async def start_approved_resume(self, session_id: str, task_id: str, expected_version: int) -> Tuple[bool, ReasonCode, Optional[int]]:
         """WAITING_REVIEW -> RUNNING CAS transition."""
         return await self._atomic_transition(

@@ -11,7 +11,8 @@ from ..schemas.supervisor import (
     ReviewDecideRequest, 
     ReviewApproveAck, 
     ReviewRejectResult,
-    TaskEventsParams
+    TaskEventsParams,
+    CancelTaskRequest
 )
 from ..domain.enums import (
     Decision, ExecutionMode, ReasonCode, TaskState, EventType,
@@ -115,6 +116,27 @@ async def handle_supervisor_request(
             await LlmPlanningService.load_agent_cards()
             cards = LlmPlanningService.get_cached_agent_cards()
         return JsonRpcResponse(id=request_data.id, result=cards)
+
+    # 5. tasks/cancel | CancelTask
+    elif method in [ApiMethod.CANCEL_TASK.value, ApiMethod.CANCEL_TASK_LEGACY.value]:
+        params = CancelTaskRequest(**request_data.params)
+        session_id = params.session_id or "unknown"
+        success = await agent_service.cancel_task(session_id, params.id)
+        return JsonRpcResponse(
+            id=request_data.id, 
+            result={"task_id": params.id, "success": success}
+        )
+
+    # 6. session/clear | ClearSession
+    elif method in [ApiMethod.CLEAR_SESSION.value, ApiMethod.CLEAR_SESSION_LEGACY.value]:
+        session_id = request_data.params.get("session_id")
+        if not session_id:
+            return translator.to_rpc_error(request_data.id, RpcErrorCode.INVALID_PARAMS.value, "session_id is required")
+        success = await agent_service.clear_session(session_id)
+        return JsonRpcResponse(
+            id=request_data.id,
+            result={"session_id": session_id, "success": success}
+        )
     
     return translator.to_rpc_error(request_data.id, RpcErrorCode.METHOD_NOT_FOUND.value, "Method not found")
 

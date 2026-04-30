@@ -84,6 +84,11 @@ class RedisConversationStore(BaseRedisStore, ConversationStore):
         data = await redis.lrange(key, -limit, -1)
         return [json.loads(m) for m in data]
 
+    async def delete_messages(self, session_id: str):
+        redis = await self.get_redis()
+        key = self._get_base_key(f"supervisor:conversation:{session_id}")
+        await redis.delete(key)
+
 
 class RedisSwarmStateStore(BaseRedisStore, SwarmStateStore):
     """
@@ -101,3 +106,7 @@ class RedisSwarmStateStore(BaseRedisStore, SwarmStateStore):
         redis = await self.get_redis()
         data = await redis.get(self._key(session_id))
         return json.loads(data) if data else None
+
+    async def delete_swarm_state(self, session_id: str):
+        redis = await self.get_redis()
+        await redis.delete(self._key(session_id))

@@ -1,432 +1,98 @@
 @startuml
 !pragma layout smetana
-title 03. Supervisor Host Agent Component Architecture (Python target architecture, 2026-04-25)
+title 03. Supervisor Host Agent Component Architecture (Vertical Optimized, 2026-04-30)
 
+' Layout settings
+top to bottom direction
 skinparam shadowing false
 skinparam componentStyle rectangle
-top to bottom direction
-skinparam nodesep 25
-skinparam ranksep 40
+skinparam nodesep 20
+skinparam ranksep 30
 
-package "api" {
-  [supervisor_a2a_endpoint\n/a2a/supervisor] as supervisor_a2a_endpoint
-  [supervisor_a2a_request_validator] as supervisor_a2a_request_validator
+' Layer 1: API & Security Entry
+package "01. Entry & Security Layer" {
+  [Supervisor API] as API
+  [Request Validator] as Validator
+  [Prompt Injection Guard] as Guard
 }
 
-package "application" {
-  [supervisor_agent_service] as agent_service
-  [supervisor_pre_hitl_a2ui_service] as pre_hitl_a2ui_service
-  [hitl_gate_service] as hitl_gate_service
-  [task_queue_service] as task_queue_service #FFEBCF
-  [supervisor_execution_service] as execution_service
-  [supervisor_review_application_service] as review_app_service
-  [supervisor_task_event_stream_service] as task_event_stream_service
-  [supervisor_task_facade] as task_facade
-  [supervisor_agent_orchestrator] as orchestrator #DCEBFF
-  [supervisor_graph_execution_service] as graph_execution_service
-  [Background Worker\n(worker.py)] as background_worker #EFE1FF
-  [supervisor_execution_result_collector] as result_collector
-  [supervisor_execution_summary_emitter] as summary_emitter
-  [supervisor_fallback_invoke_service] as fallback_invoke_service
-  [supervisor_exception_translator] as exception_translator
-  [supervisor_progress_publisher] as progress_publisher
-  [supervisor_output_event_support] as output_event_support
-  [supervisor_execution_state_loader] as state_loader
+' Layer 2: Application Orchestration
+package "02. Application Orchestration" {
+  [Supervisor Agent Service] as AgentService
+  [HITL Gate Service] as HitlGate
+  [Fact Governance Service] as FactGov
 }
 
-package "persistence application" {
-  [SupervisorExecutionPersistenceService\n<<facade>>] as supervisor_execution_persistence_facade #F3F4F6
-  [SupervisorPersistenceStrategyFactory] as supervisor_persistence_strategy_factory
-  [ExecutionConsistencyCoordinator] as execution_consistency_coordinator
+' Layer 3: Execution & Background Processing
+package "03. Execution & Worker Layer" {
+  [Task Queue Service] as TaskQueue #FFEBCF
+  [Worker Execution Service] as WorkerService #EFE1FF
+  [Graph Execution Service] as GraphService #DCEBFF
 }
 
-package "read application" {
-  [SupervisorReadFacade\n<<facade>>] as supervisor_read_facade #F3F4F6
-  [SupervisorReadQueryFactory] as supervisor_read_query_factory
+' Layer 4: Persistence & Read Models
+package "04. Persistence & Read Layer" {
+  [Consistency Coordinator] as Coordinator
+  [Read Facade] as ReadFacade
+  [Snapshot Verifier] as Verifier
 }
 
-package "supervisor ports" {
-  [SupervisorPlanningService\n(plan + review)] <<port>> as PlanningPort
-  [HitlDecisionService] <<port>> as HitlDecisionPort #EFE1FF
-  [A2AInvocationService] <<port>> as InvocationPort
-  [HandoffPolicyService] <<port>> as HandoffPolicyPort
-  [SupervisorResponseComposeService] <<port>> as ComposePort
-  [SupervisorStateGraphFactory] <<port>> as GraphFactoryPort
-  [SupervisorSwarmCoordinator] <<port>> as SwarmCoordinatorPort
-  [SupervisorA2uiService] <<port>> as A2uiPort
+' Layer 5: Technical Adapters
+package "05. Technical Adapters" {
+  [LLM Planner] as Planner
+  [LLM Composer] as Composer
+  [LangGraph Factory] as GraphFactory
+  [A2A Invocation Service] as Invocation
 }
 
-package "storage ports" {
-  [ConversationStore] <<port>> as ConversationStorePort
-  [GraphCheckpointStore] <<port>> as CheckpointStorePort #FFEBCF
-  [SupervisorSwarmStateStore] <<port>> as SwarmStateStorePort #DCEBFF
-  [SupervisorReviewStore] <<port>> as ReviewStorePort #FFDCE5
-  [A2ATaskStore] <<port>> as TaskStorePort #DFF6EE
-  [ReviewedExecutionSnapshotStore] <<port>> as SnapshotStorePort #EFE1FF
-}
+' Infrastructure
+database "Redis (Task/State/Stream)" as Redis #LightBlue
 
-package "llm / policy implementations" {
-  [LlmSupervisorPlanningService\n(plan + review)] as PlanningImpl
-  [DefaultHitlDecisionService] as HitlDecisionImpl
-  [LlmSupervisorResponseComposeService] as ComposeImpl
-}
+' Hidden links to force vertical stacking
+API -[hidden]down-> AgentService
+AgentService -[hidden]down-> TaskQueue
+TaskQueue -[hidden]down-> Coordinator
+Coordinator -[hidden]down-> Planner
+Planner -[hidden]down-> Redis
 
-package "graph / orchestration implementations" {
-  [LangGraphSupervisorStateGraphFactory] as GraphFactoryImpl
-  [DefaultSupervisorSwarmCoordinator] as SwarmCoordinatorImpl
-  [DefaultHandoffPolicyService] as HandoffImpl
-}
+' --- Main Flow ---
 
-package "a2ui implementations" {
-  [CompositeSupervisorA2uiService] as CompositeA2uiService
-  [DefaultSupervisorProductInfoA2uiService] as ProductA2uiService
-  [DefaultSupervisorReservationA2uiService] as ReservationA2uiService
-}
+' 1. Request Flow
+API -> Validator : validate
+API -> AgentService : execute
+AgentService -> Guard : sanitize
+AgentService -> HitlGate : process
+HitlGate -> Planner : plan
+HitlGate -> Coordinator : snapshot
+HitlGate -> TaskQueue : enqueue
 
-package "store implementations" {
-  [RedisConversationStore] as ConversationStoreImpl
-  [RedisGraphCheckpointStore] as CheckpointStoreImpl
-  [RedisSupervisorSwarmStateStore] as SwarmStateStoreImpl
-  [RedisSupervisorReviewStore] as ReviewStoreImpl
-  [RedisA2ATaskStore] as RedisTaskStore
-  [InMemoryA2ATaskStore] as InMemoryTaskStore
-  [RedisReviewedExecutionSnapshotStore] as SnapshotStoreImpl
-}
+' 2. Worker Execution Flow
+WorkerService -> TaskQueue : dequeue (Reliable)
+WorkerService -> GraphService : run
+GraphService -> GraphFactory : build
+GraphService -> Invocation : call agent
+Invocation -> FactGov : validate facts
+GraphService -> Composer : synthesize
+GraphService -> Coordinator : update state
 
-package "persistence strategies" {
-  [SupervisorPersistenceStrategy\n<<interface>>] as PersistenceStrategy
-  [AbstractSupervisorPersistenceStrategy\n<<template>>] as AbstractPersistenceStrategy
-  [ReviewOpenPersistenceStrategy] as ReviewOpenStrategy
-  [ApprovedResumePersistenceStrategy] as ApprovedResumeStrategy
-  [ExecutionCompletionPersistenceStrategy] as CompletionStrategy
-}
+' 3. Review & Approval Flow
+ReadFacade -> Verifier : check integrity
+Verifier -> Coordinator : load snapshot
 
-package "read queries" {
-  [SupervisorReadQuery\n<<interface>>] as ReadQuery
-  [ExecutionRestoreReadQuery] as RestoreReadQuery
-  [TaskReadModelQuery] as TaskReadModelQuery
-  [ReviewReadQuery] as ReviewReadQuery
-  [SnapshotVerificationQuery] as SnapshotVerificationQuery
-}
+' 4. Infrastructure Connection
+Coordinator -> Redis : MULTI/EXEC
+TaskQueue -> Redis : LPUSH/BRPOP
+Invocation -> Redis : CircuitBreaker
+GraphService -> Redis : Stream SSE
 
-package "runtime / integration" {
-  [DefaultSupervisorLlmRuntime] as LlmRuntime
-  [SupervisorChatGateway] <<port>> as ChatGatewayPort
-  [ReflectionSupervisorChatGateway] as ChatGatewayImpl
-  [DefaultA2AInvocationService] as InvocationImpl
-  [A2AClientRegistry] as ClientRegistry
-  [AgentCardReader] as AgentCardReader
-  [A2ARequestMapper] as RequestMapper
-  [A2AJsonRpcClient] as JsonRpcClient
-  [SupervisorA2aLifecycleService] as LifecycleService #FFEBCF
-  [SupervisorRequestIdempotencyService] as IdempotencyService #FFDCE5
-  [settings/app.yml /\nsettings/supervisor-hitl.yml] as Config
-  [Downstream A2A Agents] as DownstreamAgents
-}
-
-' Visual spine: read top -> bottom first, then side capabilities.
-supervisor_a2a_endpoint -[hidden]-> supervisor_a2a_request_validator
-supervisor_a2a_request_validator -[hidden]-> output_event_support
-
-pre_hitl_a2ui_service -[hidden]-> hitl_gate_service
-hitl_gate_service -[hidden]-> execution_service
-execution_service -[hidden]-> review_app_service
-review_app_service -[hidden]-> task_event_stream_service
-task_event_stream_service -[hidden]-> task_facade
-
-graph_execution_service -[hidden]-> state_loader
-state_loader -[hidden]-> result_collector
-result_collector -[hidden]-> summary_emitter
-summary_emitter -[hidden]-> fallback_invoke_service
-fallback_invoke_service -[hidden]-> exception_translator
-exception_translator -[hidden]-> progress_publisher
-
-supervisor_execution_persistence_facade -[hidden]-> supervisor_persistence_strategy_factory
-supervisor_persistence_strategy_factory -[hidden]-> execution_consistency_coordinator
-supervisor_read_facade -[hidden]-> supervisor_read_query_factory
-
-PlanningPort -[hidden]-> HitlDecisionPort
-HitlDecisionPort -[hidden]-> ComposePort
-ComposePort -[hidden]-> GraphFactoryPort
-GraphFactoryPort -[hidden]-> SwarmCoordinatorPort
-SwarmCoordinatorPort -[hidden]-> A2uiPort
-ConversationStorePort -[hidden]-> CheckpointStorePort
-CheckpointStorePort -[hidden]-> TaskStorePort
-TaskStorePort -[hidden]-> ReviewStorePort
-ReviewStorePort -[hidden]-> SwarmStateStorePort
-SwarmStateStorePort -[hidden]-> SnapshotStorePort
-
-PlanningImpl -[hidden]-> HitlDecisionImpl
-HitlDecisionImpl -[hidden]-> ComposeImpl
-ComposeImpl -[hidden]-> GraphFactoryImpl
-GraphFactoryImpl -[hidden]-> SwarmCoordinatorImpl
-SwarmCoordinatorImpl -[hidden]-> HandoffImpl
-CompositeA2uiService -[hidden]-> ProductA2uiService
-ProductA2uiService -[hidden]-> ReservationA2uiService
-
-ConversationStoreImpl -[hidden]-> CheckpointStoreImpl
-CheckpointStoreImpl -[hidden]-> SwarmStateStoreImpl
-SwarmStateStoreImpl -[hidden]-> ReviewStoreImpl
-ReviewStoreImpl -[hidden]-> RedisTaskStore
-RedisTaskStore -[hidden]-> InMemoryTaskStore
-InMemoryTaskStore -[hidden]-> SnapshotStoreImpl
-
-LlmRuntime -[hidden]-> ChatGatewayPort
-ChatGatewayPort -[hidden]-> ChatGatewayImpl
-ChatGatewayImpl -[hidden]-> InvocationImpl
-InvocationImpl -[hidden]-> ClientRegistry
-ClientRegistry -[hidden]-> AgentCardReader
-AgentCardReader -[hidden]-> RequestMapper
-RequestMapper -[hidden]-> JsonRpcClient
-LifecycleService -[hidden]-> IdempotencyService
-IdempotencyService -[hidden]-> Config
-Config -[hidden]-> DownstreamAgents
-
-PersistenceStrategy -[hidden]-> AbstractPersistenceStrategy
-AbstractPersistenceStrategy -[hidden]-> ReviewOpenStrategy
-ReviewOpenStrategy -[hidden]-> ApprovedResumeStrategy
-ApprovedResumeStrategy -[hidden]-> CompletionStrategy
-ReadQuery -[hidden]-> RestoreReadQuery
-RestoreReadQuery -[hidden]-> TaskReadModelQuery
-TaskReadModelQuery -[hidden]-> ReviewReadQuery
-ReviewReadQuery -[hidden]-> SnapshotVerificationQuery
-
-supervisor_a2a_endpoint -down-> supervisor_a2a_request_validator
-supervisor_a2a_endpoint -down-> agent_service
-supervisor_a2a_endpoint -down-> output_event_support
-
-supervisor_a2a_endpoint -[hidden]down-> agent_service
-agent_service -[hidden]down-> supervisor_read_facade
-supervisor_read_facade -[hidden]down-> orchestrator
-orchestrator -[hidden]down-> graph_execution_service
-graph_execution_service -[hidden]down-> supervisor_execution_persistence_facade
-supervisor_execution_persistence_facade -[hidden]down-> execution_consistency_coordinator
-PlanningPort -[hidden]down-> PlanningImpl
-HitlDecisionPort -[hidden]down-> HitlDecisionImpl
-ComposePort -[hidden]down-> ComposeImpl
-GraphFactoryPort -[hidden]down-> GraphFactoryImpl
-ConversationStorePort -[hidden]down-> ConversationStoreImpl
-TaskStorePort -[hidden]down-> RedisTaskStore
-supervisor_read_query_factory -[hidden]down-> RestoreReadQuery
-
-agent_service --> pre_hitl_a2ui_service
-agent_service --> hitl_gate_service
-agent_service --> execution_service
-agent_service --> review_app_service
-agent_service --> task_event_stream_service
-agent_service --> task_facade
-agent_service -[#D96C8C]-> IdempotencyService
-agent_service -[#2FA772]-> supervisor_execution_persistence_facade
-agent_service -[#6C8AE4]-> supervisor_read_facade
-
-pre_hitl_a2ui_service --> PlanningPort
-pre_hitl_a2ui_service --> supervisor_read_facade
-pre_hitl_a2ui_service --> SwarmCoordinatorPort
-pre_hitl_a2ui_service --> A2uiPort
-
-hitl_gate_service --> PlanningPort
-hitl_gate_service -[#9A6BDF]-> HitlDecisionPort
-hitl_gate_service --> task_facade
-hitl_gate_service -[#2FA772]-> supervisor_execution_persistence_facade
-hitl_gate_service -[#6C8AE4]-> supervisor_read_facade
-
-execution_service -[#4C8BF5]-> orchestrator
-execution_service --> task_facade
-execution_service --> result_collector
-execution_service -[#2FA772]-> supervisor_execution_persistence_facade
-execution_service -[#6C8AE4]-> supervisor_read_facade
-
-review_app_service --> hitl_gate_service
-review_app_service --> execution_service
-review_app_service --> task_facade
-
-task_facade -[#E3A23B]-> LifecycleService
-task_facade -[#6C8AE4]-> supervisor_read_facade
-LifecycleService -[#2FA772]-> supervisor_execution_persistence_facade
-
-orchestrator -[#4C8BF5]-> graph_execution_service
-orchestrator -[#4C8BF5]-> exception_translator
-orchestrator -[#4C8BF5]-> fallback_invoke_service
-orchestrator -[#4C8BF5]-> summary_emitter
-
-graph_execution_service --> ComposePort
-graph_execution_service --> progress_publisher
-graph_execution_service --> supervisor_execution_persistence_facade
-graph_execution_service --> LifecycleService
-
-graph_execution_service --> state_loader
-graph_execution_service -[#6C8AE4]-> supervisor_read_facade
-graph_execution_service --> GraphFactoryPort
-state_loader -[#6C8AE4]-> supervisor_read_facade : restore runtime state
-
-supervisor_execution_persistence_facade --> supervisor_persistence_strategy_factory
-supervisor_persistence_strategy_factory --> PersistenceStrategy
-AbstractPersistenceStrategy ..> PersistenceStrategy : implements
-ReviewOpenStrategy --|> AbstractPersistenceStrategy
-ApprovedResumeStrategy --|> AbstractPersistenceStrategy
-CompletionStrategy --|> AbstractPersistenceStrategy
-ReviewOpenStrategy --> execution_consistency_coordinator
-ApprovedResumeStrategy --> execution_consistency_coordinator
-CompletionStrategy --> execution_consistency_coordinator
-execution_consistency_coordinator -[#2FA772]-> TaskStorePort
-execution_consistency_coordinator -[#6FAE8A]-> ConversationStorePort : persist history
-execution_consistency_coordinator -[#E66A8D]-> ReviewStorePort
-execution_consistency_coordinator -[#E3A23B]-> CheckpointStorePort : persist/finalize
-execution_consistency_coordinator -[#4C8BF5]-> SwarmStateStorePort
-execution_consistency_coordinator -[#9A6BDF]-> SnapshotStorePort
-
-supervisor_read_facade --> supervisor_read_query_factory
-supervisor_read_query_factory --> ReadQuery
-RestoreReadQuery ..> ReadQuery : implements
-TaskReadModelQuery ..> ReadQuery : implements
-review_read_query ..> ReadQuery : implements
-snapshot_verification_query ..> ReadQuery : implements
-RestoreReadQuery -[#6FAE8A]-> ConversationStorePort : load history
-RestoreReadQuery -[#E3A23B]-> CheckpointStorePort : load checkpoint
-RestoreReadQuery -[#4C8BF5]-> SwarmStateStorePort : load swarm state
-RestoreReadQuery -[#9A6BDF]-> SnapshotStorePort : load reviewed snapshot
-task_read_model_query -[#2FA772]-> TaskStorePort : get/list task view
-review_read_query -[#E66A8D]-> ReviewStorePort : get/decide review
-snapshot_verification_query -[#9A6BDF]-> SnapshotStorePort : verify snapshot
-
-GraphFactoryImpl ..> GraphFactoryPort : implements
-PlanningImpl ..> PlanningPort : implements
-HitlDecisionImpl ..> HitlDecisionPort : implements
-InvocationImpl ..> InvocationPort : implements
-HandoffImpl ..> HandoffPolicyPort : implements
-ComposeImpl ..> ComposePort : implements
-SwarmCoordinatorImpl ..> SwarmCoordinatorPort : implements
-CompositeA2uiService ..> A2uiPort : implements
-
-GraphFactoryImpl --> HandoffPolicyPort
-GraphFactoryImpl --> SwarmCoordinatorPort
-GraphFactoryImpl --> progress_publisher
-
-PlanningImpl --> LlmRuntime
-PlanningImpl --> agent_card_reader
-ComposeImpl --> LlmRuntime
-ComposeImpl --> A2uiPort
-InvocationImpl --> ClientRegistry
-InvocationImpl --> agent_card_reader
-InvocationImpl --> RequestMapper
-InvocationImpl --> JsonRpcClient
-ClientRegistry --> Config
-JsonRpcClient --> DownstreamAgents
-
-CompositeA2uiService --> ProductA2uiService
-CompositeA2uiService --> ReservationA2uiService
-
-ConversationStoreImpl ..> ConversationStorePort : implements
-CheckpointStoreImpl ..> CheckpointStorePort : implements
-SwarmStateStoreImpl ..> SwarmStateStorePort : implements
-ReviewStoreImpl ..> ReviewStorePort : implements
-RedisTaskStore ..> TaskStorePort : implements
-InMemoryTaskStore ..> TaskStorePort : implements
-SnapshotStoreImpl ..> SnapshotStorePort : implements
-
-ChatGatewayImpl ..> ChatGatewayPort : implements
-LlmRuntime --> ChatGatewayPort
-
-note bottom of agent_service
-Current use case split:
-- pre-HITL A2UI shortcut
-- planner-backed review gate
-- unary/stream execution
-- review approve/cancel ack
-- approve는 immutable reviewed snapshot resume만 허용
-- STREAM approve 결과는 task-scoped event stream 재구독으로 전달
+note right of Guard
+  Filters malicious 
+  patterns & injections
 end note
 
-note bottom of orchestrator
-Coordinator only:
-- connect graph execution and fallback
-- translate exceptions
-- keep execution boundary thin
-Not owner of:
-- review gate
-- persistence policy details
-- A2UI product mapping
-- 신규 agent registration
-end note
-
-note bottom of supervisor_execution_persistence_facade
-Persistence facade pattern:
-- single entrypoint for write scenarios
-- chooses strategy by persistence command
-- keeps services away from Redis/store details
-- delegates write ordering to coordinator
-- conversation/checkpoint write also go through this boundary
-end note
-
-note bottom of supervisor_read_facade
-Read facade pattern:
-- single entrypoint for read scenarios
-- chooses query handler by read intent
-- keeps services away from store-specific lookup details
-- centralizes ownership/version/snapshot read policy
-end note
-
-note bottom of LifecycleService
-Lifecycle service:
-- lifecycle policy / read model boundary
-- no direct Redis write
-- write intent delegates to facade
-end note
-
-note bottom of GraphFactoryImpl
-Current graph nodes:
-- select
-- invoke
-- handoff_evaluate
-- handoff_apply
-- merge
-- compose
-Graph input:
-- precomputed routing queue
-- reviewed snapshot resume state
-- handoff policy context
-end note
-
-note bottom of graph_execution_service
-Execution boundary:
-- load runtime state
-- invoke graph
-- publish progress
-- request terminal persistence through facade
-- update lifecycle through dedicated services
-end note
-
-note bottom of state_loader
-Read-only restore boundary:
-- builds restore request only
-- actual store access goes through read facade/query layer
-- no Redis write
-end note
-
-note bottom of task_facade
-Read model boundary:
-- delegates task read model lookup to read facade
-- used by tasks/get, tasks/list, response shaping
-- does not write Redis directly
-end note
-
-note bottom of ComposeImpl
-Compose can emit:
-- text events
-- A2UI payload
-- pre-HITL-only A2UI views are skipped in post-invoke compose
-- progress/reasoning are never persisted as task payload
-end note
-
-note bottom of CompositeA2uiService
-Current supported scope:
-- product A2UI
-- reservation A2UI
-- pre-HITL input form A2UI
-- post-invoke compose A2UI
-Extension rule:
-- 신규 agent 기본 등록은 yml + agent card
-- raw payload/A2UI만 optional adapter
+note right of Coordinator
+  Ensures atomic state 
+  transitions via Redis CAS
 end note
 
 @enduml

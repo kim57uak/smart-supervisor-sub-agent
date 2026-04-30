@@ -1,86 +1,84 @@
 @startuml
 !pragma layout smetana
-title 02. Sub-agent Package Policy (Final Implementation Baseline)
+title 02. Sub-Agent Package Policy (Python runtime: src/app)
 
 skinparam shadowing false
 skinparam packageStyle rectangle
 
 package "src/app" {
   package "api" {
-    package "agent" {
-      [chat.py] <<Router>>
-    }
     package "a2a" {
-      [discovery.py] <<Router>>
+        class discovery
+    }
+    package "agent" {
+        class chat
     }
     package "support" {
-      [a2a_handler.py] <<Logic>>
-      [stream.py] <<Router>>
-      [agent_request_factory.py]
-      [agent_response_mapper.py]
+        class stream
+        class a2a_handler
+        class agent_request_factory
     }
   }
 
-  package "application.execution" {
-    [chat_usecase.py] <<UseCase>>
-    [executor.py] <<Orchestrator>>
-    [worker.py] <<Runtime>>
-    [agent_progress_publisher.py]
-  }
-
-  package "application.persistence" {
-    [agent_persistence.py] <<Commander>>
-    [execution_consistency_coordinator.py] <<Coordinator>>
-  }
-
-  package "application.read" {
-    [agent_read_facade.py] <<Reader>>
-  }
-
-  package "ports" {
-    [interfaces.py] <<Protocols>>
+  package "application" {
+    package "execution" {
+      class executor
+      class chat_usecase
+      class worker
+      class agent_progress_publisher
+    }
+    package "persistence" {
+      class agent_persistence
+      class execution_consistency_coordinator
+    }
+    package "read" {
+      class agent_read_facade
+    }
   }
 
   package "adapters" {
-    package "llm" {
-      [llm_adapters.py]
-    }
     package "mcp" {
-      [mcp_adapters.py]
-      [mcp_infrastructure.py]
-      [mcp_tool_registry.py]
+      class mcp_infrastructure
+      class mcp_adapters
+      class mcp_tool_registry
     }
-    package "store" {
-      [redis_store.py]
+    package "llm" {
+      class llm_adapters
     }
     package "orchestration" {
-      [langgraph_factory.py]
+      class langgraph_factory
     }
-  }
-
-  package "domain" {
-    [models.py]
-    [enums.py]
-    [exceptions.py]
-  }
-
-  package "infrastructure" {
-    [llm_runtime.py]
-    [redis_client.py]
+    package "store" {
+      class redis_store
+    }
   }
 
   package "core" {
-    [config.py] <<Settings>>
-    [dependencies.py] <<DI>>
+    class config
+    class dependencies
+  }
+
+  package "domain" {
+    class models
+    class enums
+    class exceptions
+  }
+
+  package "infrastructure" {
+    class redis_client
+    class llm_runtime
+  }
+
+  package "ports" {
+    class interfaces
   }
 }
 
 note bottom
-Final Alignment Rules
-- Separated API and Worker logic
-- Centralized Settings via Pydantic
-- Trace ID propagation mandatory
-- Pythonic naming (snake_case files)
+Rules
+- API Layer는 A2A(JSON-RPC) 및 User Chat 엔드포인트를 제공한다.
+- Application Layer는 AgentExecutor를 통해 실제 로직을 오케스트레이션한다.
+- MCP Adapter는 Spring AI MCP 서버와의 연동(Handshake, Transport)을 담당한다.
+- 모든 실행 상태는 Redis를 통해 영속화 및 실시간 스트리밍(SSE)된다.
 end note
-
 @enduml

@@ -1,5 +1,5 @@
 @startuml
-title 06. Supervisor A2A Request Sequence (Detailed Enterprise Architecture, 2026-04-27)
+title 06. Supervisor A2A Request Sequence (Detailed Enterprise Architecture, 2026-04-30)
 
 skinparam shadowing false
 skinparam sequenceMessageAlign center
@@ -10,13 +10,13 @@ actor User
 participant "supervisor_a2a_endpoint" as Controller
 participant "supervisor_a2a_request_validator" as Validator
 participant "supervisor_agent_service" as AgentService
-participant "supervisor_request_idempotency_service" as Idempotency
-participant "supervisor_pre_hitl_a2ui_service" as PreHitlA2ui
+participant "prompt_injection_guard" as Guard
+participant "llm_planning_service" as Planner
 participant "hitl_gate_service" as HitlGate
 participant "task_queue_service" as TaskQueue #FFEBCF
 participant "supervisor_execution_persistence_service" as PersistenceFacade
 participant "execution_consistency_coordinator" as Consistency
-participant "task_event_stream_service" as TaskEventStream
+participant "SnapshotVerificationQuery" as VerifyQuery
 database "Redis (Queue/Stream/Store)" as Redis
 
 box "Background Worker Tier" #F9F9F9
@@ -42,22 +42,27 @@ deactivate Validator
 Controller -> AgentService : execute_task(session_id, message)
 activate AgentService
 
-AgentService -> Idempotency : executeOnce(request_id)
-note right: Prevents duplicate task creation
+AgentService -> Consistency : check_and_reserve_request(request_id)
+note right: Redis SET NX (Idempotency Lock)
+Consistency --> AgentService : (is_new, task_id)
 
 AgentService -> HitlGate : evaluate_and_open_review(...)
 activate HitlGate
-HitlGate -> HitlGate : plan(user_input)
+HitlGate -> Guard : sanitize(message)
+Guard --> HitlGate : clean_message
+
+HitlGate -> Planner : plan(clean_message)
+activate Planner
+Planner -> Planner : _get_routing_decision()
+Planner -> Planner : _evaluate_hitl_policy()
+Planner --> HitlGate : frozen_plan, review_required
+deactivate Planner
+
 HitlGate -> PersistenceFacade : persist_review_open(...)
 PersistenceFacade -> Consistency : createWaitingReviewWithSnapshot(...)
 Consistency -> Redis : MULTI/EXEC (Atomic Save)
 HitlGate --> AgentService : review_required, plan
 deactivate HitlGate
-
-AgentService -> PreHitlA2ui : build_pre_hitl_form(plan)
-activate PreHitlA2ui
-PreHitlA2ui --> AgentService : a2ui_form (if any)
-deactivate PreHitlA2ui
 
 alt review_required
     AgentService --> Controller : status: WAITING_REVIEW
@@ -76,12 +81,18 @@ deactivate Controller
 
 == 2. Background Execution (Worker Tier) ==
 
-Worker -> Redis : BRPOP supervisor:task_queue (polling)
+Worker -> TaskQueue : dequeue_task()
 activate Worker
-Redis --> Worker : task_msg {session_id, task_id, plan}
+TaskQueue -> Redis : BRPOPLPUSH (Reliable Queue)
+Redis --> TaskQueue : task_msg
+TaskQueue --> Worker : task_msg {session_id, task_id, plan}
 
 Worker -> GraphExecution : execute_plan(session_id, task_id, plan)
 activate GraphExecution
+
+GraphExecution -> Consistency : start_approved_resume()
+note right: Atomic State Transition (CAS)
+Consistency --> GraphExecution : success
 
 GraphExecution -> Graph : invoke(state)
 activate Graph
@@ -100,8 +111,7 @@ deactivate Graph
 
 GraphExecution -> Composer : stream_compose(final_state)
 activate Composer
-Composer -> TaskEventStream : append_event(chunk / a2ui / done)
-TaskEventStream -> Redis : XADD supervisor:events (Cursor Gen)
+Composer -> Redis : XADD supervisor:events (SSE)
 Composer --> GraphExecution : completion
 deactivate Composer
 
@@ -119,12 +129,19 @@ activate Controller
 Controller -> AgentService : handle_review_decision(APPROVE)
 activate AgentService
 
+AgentService -> VerifyQuery : execute(task_id, params)
+activate VerifyQuery
+VerifyQuery -> VerifyQuery : check_hashes(request, plan)
+VerifyQuery -> VerifyQuery : verify_resume_token()
+VerifyQuery -> VerifyQuery : check_drift_policy()
+VerifyQuery --> AgentService : verification_result (SUCCESS)
+deactivate VerifyQuery
+
 AgentService -> PersistenceFacade : start_approved_resume(...)
 activate PersistenceFacade
 PersistenceFacade -> Consistency : start_approved_resume (CAS)
 Consistency -> Redis : WATCH task_version / MULTI / EXEC
-Consistency -> TaskEventStream : get_initial_cursor
-Consistency --> PersistenceFacade : resume_data {initial_cursor, version}
+Consistency --> PersistenceFacade : resume_data
 PersistenceFacade --> AgentService : success
 deactivate PersistenceFacade
 

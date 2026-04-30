@@ -1,47 +1,50 @@
 @startuml
-!pragma layout smetana
-title 19. Python Agent Runtime Sequence (Final Implementation)
+title 19. Sub-Agent Runtime Sequence (2026-04-30)
 
 skinparam shadowing false
+autonumber
 
-actor User
-participant "chat.router" as Endpoint
-participant "AgentAuthorizationService" as AuthService
-participant "AgentChatUseCase" as ChatUseCase
-participant "RedisAdapter" as Redis
-participant "WorkerExecutionService" as Worker
-participant "AgentExecutor" as Executor
-participant "WorkflowFactory" as GraphFactory
-participant "LlmPlanner" as Planner
-participant "McpExecutor" as ToolExec
-participant "LlmComposer" as Composer
-participant "LlmRuntime" as Runtime
-participant "McpToolRegistry" as ToolRegistry
+actor Supervisor
+participant "A2A Endpoint" as API
+participant "Agent Executor" as Executor
+participant "Background Worker" as Worker
+participant "LangGraph" as Graph
+participant "LLM Adapter" as LLM
+participant "MCP Infrastructure" as MCP
+database "Redis" as Redis
+participant "MCP Server" as MCPServer
 
-User -> Endpoint : request(session_id)
-Endpoint -> AuthService : assert_authorized(session_id, scope)
-AuthService --> Endpoint : ok
-Endpoint -> ChatUseCase : handle_chat_request(request)
-ChatUseCase -> Redis : enqueue(Task)
-ChatUseCase --> Endpoint : task_id
-Endpoint --> User : 202 Accepted
+== 1. Task Reception (Producer) ==
+Supervisor -> API : POST /a2a/product (JsonRpc)
+API -> Executor : enqueue(session_id, message)
+Executor -> Redis : LPUSH subagent:queue
+API -->> Supervisor : 202 Accepted (task_id)
 
-note over Worker, Runtime : Background Worker Flow
+== 2. Task Execution (Consumer) ==
+Worker -> Redis : BRPOP subagent:queue
+Worker -> Executor : execute(task_id)
+Executor -> Graph : ainvoke()
 
-Worker -> Redis : dequeue()
-Worker -> Executor : execute(task)
-Executor -> GraphFactory : create_graph()
-GraphFactory --> Executor : graph
-Executor -> Planner : plan(context)
-Planner -> Runtime : generate_tool_plan
-Runtime --> Planner : ToolPlan
-Executor -> ToolExec : execute(plan)
-ToolExec -> ToolRegistry : call_mcp_tool
-ToolRegistry --> ToolExec : ToolResult
-Executor -> Composer : stream_compose(context)
-Composer -> Runtime : generate_final_response
-Runtime --> Composer : AiChatChunk
-Composer --> Executor : AiChatChunk
-Executor -> Redis : publish(Progress/Chunk)
+Graph -> LLM : plan(message, tools)
+LLM -->> Graph : ToolPlan (name, arguments)
+
+loop For each tool in plan
+    Graph -> MCP : call(tool_name, arguments)
+    MCP -> MCP : get_session(server)
+    alt No session
+        MCP -> MCPServer : call("initialize")
+        MCPServer -->> MCP : Session ID
+    end
+    MCP -> MCPServer : call(tool_name, arguments)
+    MCPServer -->> MCP : Tool Result (SSE/JSON)
+    MCP -->> Graph : Result
+end
+
+Graph -> LLM : compose(history, results)
+LLM -->> Graph : Final Answer
+
+Graph -> Executor : complete
+Executor -> Redis : SET task:result
+Executor -> Redis : XADD stream:events (Final)
 
 @enduml

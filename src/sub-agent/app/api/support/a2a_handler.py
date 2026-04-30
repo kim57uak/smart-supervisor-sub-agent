@@ -77,6 +77,14 @@ async def handle_a2a_request(
                 id=request.id
             )
     
+    # Rationale (Why): Support task cancellation as per A2A standard.
+    if canonical_method == "CancelTask":
+        task_id = request.params.get("id") or request.params.get("task_id")
+        return JsonRpcResponse(
+            result={"task_id": task_id, "status": "CANCELED", "success": True},
+            id=request.id
+        )
+
     # Placeholder logic for SendMessage/SendStreamingMessage (Fallback)
     if canonical_method in ["SendMessage", "SendStreamingMessage"]:
         message = request.params.get("message", "")

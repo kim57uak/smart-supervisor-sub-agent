@@ -80,6 +80,10 @@ class ApiMethod(Enum):
     AGENT_CARD_LEGACY = "GetAgentCard"
     TASK_EVENTS = "tasks/events"
     TASK_EVENTS_LEGACY = "TaskEvents"
+    CANCEL_TASK = "tasks/cancel"
+    CANCEL_TASK_LEGACY = "CancelTask"
+    CLEAR_SESSION = "session/clear"
+    CLEAR_SESSION_LEGACY = "ClearSession"
 
 
 class RpcErrorCode(Enum):
