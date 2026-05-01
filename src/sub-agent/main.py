@@ -22,6 +22,8 @@ from app.infrastructure.redis_client import RedisClient
 from app.domain.exceptions import BaseAgentException
 from app.core.config import settings
 
+logger = structlog.get_logger()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize shared infrastructure
@@ -133,7 +135,9 @@ def create_app():
         auth: AgentAuthorizationService = Depends(get_auth_service)
     ):
         # Rationale (Why): Security check is mandatory at the entry point.
+        logger.info("a2a_product_request_received", params_keys=list((request.params or {}).keys()))
         session_id = await resolve_session_id(request.params or {})
+        logger.info("a2a_product_session_resolved", resolved=bool(session_id), session_id=session_id or "")
         if not session_id:
             return JsonRpcResponse(
                 jsonrpc="2.0",
@@ -150,7 +154,9 @@ def create_app():
         executor: AgentExecutor = Depends(get_agent_executor),
         auth: AgentAuthorizationService = Depends(get_auth_service)
     ):
+        logger.info("a2a_reservation_request_received", params_keys=list((request.params or {}).keys()))
         session_id = await resolve_session_id(request.params or {})
+        logger.info("a2a_reservation_session_resolved", resolved=bool(session_id), session_id=session_id or "")
         if not session_id:
             return JsonRpcResponse(
                 jsonrpc="2.0",

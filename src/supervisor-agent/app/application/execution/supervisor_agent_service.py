@@ -207,8 +207,16 @@ class SupervisorAgentService:
         }
 
     async def _get_duplicate_response(self, session_id: str, task_id: str) -> Dict[str, Any]:
-        task_view = await self.read_facade.get_task_view(session_id, task_id)
-        return task_view or self._build_accepted_response(session_id, task_id)
+        task_model = await self.read_facade.get_task_model(session_id, task_id)
+        if not task_model:
+            return self._build_accepted_response(session_id, task_id)
+        return {
+            "task_id": task_id,
+            "session_id": session_id,
+            "status": task_model.get("state", ProcessStatus.STREAMING.value),
+            "stream_endpoint": f"{settings.api_prefix}/stream",
+            "a2ui_enabled": settings.a2a.a2ui_enabled,
+        }
 
     async def _process_approval(self, session_id: str, task_id: str, log: Any) -> Tuple[bool, ReasonCode, Any]:
         snapshot = await self.read_facade.get_snapshot(session_id, task_id)
