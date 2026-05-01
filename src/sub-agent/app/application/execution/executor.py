@@ -1,31 +1,38 @@
 import structlog
 from typing import Dict, Any
+from app.core.config import settings
 from app.domain.enums import ProcessStatus, EventType, AgentRole
-from app.ports.interfaces import ProgressPublisher
-from app.adapters.orchestration.langgraph_factory import WorkflowFactory
+from app.ports.interfaces import ProgressPublisher, OrchestrationEngine
 from app.application.persistence.agent_persistence import AgentPersistence
-from app.domain.models import AgentExecutionResult
+from app.domain.models import AgentExecutionResult, Message
 
 logger = structlog.get_logger(__name__)
 
 class AgentExecutor:
     """
-    Orchestrates the execution of sub-agent tasks using LangGraph.
+    Orchestrates the execution of sub-agent tasks using an abstract engine (LangGraph or Burr).
     Ensures mandatory Trace ID propagation (Document 02).
     """
     def __init__(
         self,
-        factory: WorkflowFactory,
+        engine: OrchestrationEngine,
         persistence: AgentPersistence,
         publisher: ProgressPublisher
     ):
-        self.graph = factory.create_graph()
+        self.engine = engine
         self.persistence = persistence
         self.publisher = publisher
 
     async def execute(self, session_id: str, task_id: str, message: str, trace_id: str = "unknown"):
         log = logger.bind(trace_id=trace_id, task_id=task_id, session_id=session_id)
-        log.info("execution_started")
+        log.info("execution_started", engine=settings.orchestration_engine)
+
+        await self.persistence.store.save_message(
+            session_id,
+            {"role": AgentRole.USER.value, "content": message, "task_id": task_id},
+        )
+        raw_history = await self.persistence.store.get_messages(session_id, limit=20)
+        history = [Message(role=h.get("role", AgentRole.USER.value), content=h.get("content", "")) for h in raw_history]
 
         # 1. Initialize State
         initial_state = {
@@ -33,7 +40,7 @@ class AgentExecutor:
             "session_id": session_id,
             "trace_id": trace_id,
             "user_message": message,
-            "history": [],
+            "history": history,
             "plans": [],
             "results": [],
             "final_answer": "",
@@ -49,8 +56,9 @@ class AgentExecutor:
                 "payload": {"status": ProcessStatus.RUNNING.value}
             }, trace_id=trace_id)
 
-            # 3. Invoke LangGraph
-            final_state = await self.graph.ainvoke(initial_state)
+            # 3. Invoke Abstract Engine (LangGraph or Burr)
+            # Rationale (Why): Abstraction allows framework flexibility (e.g., Burr's better state visualization).
+            final_state = await self.engine.execute(session_id, task_id, initial_state)
 
             # 4. Finalize Task (Command via Persistence)
             execution_result = AgentExecutionResult(
@@ -60,6 +68,10 @@ class AgentExecutor:
             )
 
             await self.persistence.complete_task(task_id, execution_result)
+            await self.persistence.store.save_message(
+                session_id,
+                {"role": AgentRole.ASSISTANT.value, "content": execution_result.final_answer, "task_id": task_id},
+            )
 
             await self.publisher.publish(session_id, task_id, {
                 "event_type": EventType.DONE.value,

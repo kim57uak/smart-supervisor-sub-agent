@@ -68,25 +68,45 @@ class LlmPlanningService(PlanningService):
         async with httpx.AsyncClient(timeout=5.0) as client:
             for root in host_roots:
                 discovery_url = f"{root}/.well-known/agent-card.json"
-                try:
-                    resp = await client.get(discovery_url)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        agents = data if isinstance(data, list) else [data]
-                        for agent in agents:
-                            name = agent.get("name")
-                            if name:
-                                cls._agent_card_cache[name] = agent
-                                logger.info("agent_card_loaded", name=name, url=discovery_url)
-                except Exception as e:
-                    logger.warning("a2a_discovery_failed", url=discovery_url, error=str(e))
+                
+                # Rationale (Why): Adding retry logic to handle race conditions where sub-agents 
+                # might still be booting up when the supervisor starts.
+                max_discovery_retries = 3
+                for attempt in range(max_discovery_retries):
+                    try:
+                        resp = await client.get(discovery_url)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            agents = data if isinstance(data, list) else [data]
+                            for agent in agents:
+                                name = agent.get("name")
+                                if name:
+                                    cls._agent_card_cache[name] = agent
+                                    logger.info("agent_card_loaded", name=name, url=discovery_url)
+                            break # Success, move to next root
+                        else:
+                            logger.warning("a2a_discovery_http_error", url=discovery_url, status=resp.status_code, attempt=attempt+1)
+                    except Exception as e:
+                        if attempt == max_discovery_retries - 1:
+                            logger.warning("a2a_discovery_failed_all_attempts", url=discovery_url, error=str(e))
+                        else:
+                            import asyncio
+                            await asyncio.sleep(1.0 * (attempt + 1))
 
     async def plan(self, user_input: str, context: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
-        if not LlmPlanningService._agent_card_cache:
+        routing_config = settings.supervisor_config.get("routing", {})
+        allowed_agents = list(routing_config.keys())
+        
+        # Rationale (Why): Ensure we have cards for all allowed agents. 
+        # If any card is missing, try to reload to catch late-starting agents.
+        missing_cards = [key for key in allowed_agents if not any(key.lower() in k.lower() for k in LlmPlanningService._agent_card_cache)]
+        
+        if not LlmPlanningService._agent_card_cache or missing_cards:
             try:
+                logger.info("reloading_agent_cards", missing=missing_cards)
                 await self.load_agent_cards()
             except Exception as e:
-                logger.error("initial_discovery_failed", error=str(e))
+                logger.error("discovery_reload_failed", error=str(e))
 
         # 1. Routing Planning
         decision = await self._get_routing_decision(user_input, context)
@@ -119,6 +139,7 @@ class LlmPlanningService(PlanningService):
                 "arguments": item.arguments or {"message": user_input},
                 "handoff_depth": 0
             })
+            logger.info("planner_step_added", agent=item.agentKey, reason=item.reason)
             
         plan_data = {
             "routing_queue": routing_queue,

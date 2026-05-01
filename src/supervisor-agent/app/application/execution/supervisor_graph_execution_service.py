@@ -2,10 +2,12 @@ import json
 import structlog
 from typing import Dict, Any, List, Optional, AsyncIterator
 
-from ...ports.orchestration_ports import StateGraphFactory
+from ...core.config import settings
+from ...ports.orchestration_ports import OrchestrationEngine
 from ...domain.models import FrozenExecutionPlan
 from ..persistence.supervisor_execution_persistence_service import SupervisorExecutionPersistenceService
 from ...ports.llm_ports import ResponseComposeService
+from ...ports.store_ports import ConversationStore
 from .supervisor_progress_publisher import SupervisorProgressPublisher
 from ...domain.enums import ProcessStatus
 
@@ -15,25 +17,28 @@ logger = structlog.get_logger()
 class SupervisorGraphExecutionService:
     """
     Orchestrates the execution of agent graphs and handles result composition.
+    Uses an abstract OrchestrationEngine (Strategy Pattern) to support multiple frameworks.
     """
 
     def __init__(
         self,
-        graph_factory: StateGraphFactory,
+        engine: OrchestrationEngine,
         persistence_facade: SupervisorExecutionPersistenceService,
         compose_service: ResponseComposeService,
         event_publisher: SupervisorProgressPublisher,
+        conversation_store: ConversationStore,
     ):
-        self.graph_factory = graph_factory
+        self.engine = engine
         self.persistence_facade = persistence_facade
         self.compose_service = compose_service
         self.event_publisher = event_publisher
-        self.graph = self.graph_factory.create_graph()
+        self.conversation_store = conversation_store
 
     async def execute_plan(self, session_id: str, task_id: str, plan: FrozenExecutionPlan) -> Dict[str, Any]:
         """
         Executes the agent graph with state restoration and result composition.
         """
+        logger.info("supervisor_execution_started", engine=settings.orchestration_engine, task_id=task_id)
         # Rationale (Why): Agents in the swarm need to share context (e.g., accumulated facts).
         # We load the swarm_state from persistence to inject it into the graph's initial state.
         swarm_state = await self.persistence_facade.load_swarm_state(session_id)
@@ -52,8 +57,9 @@ class SupervisorGraphExecutionService:
         }
 
         try:
-            # 1. Execute Graph
-            final_state = await self.graph.ainvoke(initial_state)
+            # 1. Execute using the abstract engine (LangGraph or Burr)
+            # Rationale (Why): Abstraction allows swapping the underlying framework without changing business logic.
+            final_state = await self.engine.execute(session_id, task_id, plan, initial_state)
 
             # 2. Compose and Publish Results
             # Rationale (Why): Raw outputs from multiple agents might be disjointed.
@@ -61,7 +67,16 @@ class SupervisorGraphExecutionService:
             user_message = plan.planner_metadata.get("user_message", "")
             final_answer = await self._compose_and_publish_results(
                 session_id, task_id, final_state["results"], 
-                {"swarm_state": final_state.get("swarm_state"), "message": user_message}
+                {
+                    "swarm_state": final_state.get("swarm_state"),
+                    "message": user_message,
+                    "history": await self._load_recent_history(session_id),
+                    "task_id": task_id
+                }
+            )
+            await self.conversation_store.save_message(
+                session_id,
+                {"role": "assistant", "content": final_answer, "task_id": task_id},
             )
 
             # 3. Emit Routing Summary
@@ -110,7 +125,15 @@ class SupervisorGraphExecutionService:
             )
 
             final_answer = await self._compose_and_publish_results(
-                session_id, task_id, [], {"message": message}
+                session_id, task_id, [], {
+                    "message": message, 
+                    "history": await self._load_recent_history(session_id),
+                    "task_id": task_id
+                }
+            )
+            await self.conversation_store.save_message(
+                session_id,
+                {"role": "assistant", "content": final_answer, "task_id": task_id},
             )
             
             log.info("execute_direct_answer_composition_finished", answer_len=len(final_answer))
@@ -152,9 +175,23 @@ class SupervisorGraphExecutionService:
                 final_answer_parts.append(token)
         return "".join(final_answer_parts)
 
+    async def _load_recent_history(self, session_id: str) -> List[Dict[str, Any]]:
+        """
+        Loads recent conversation history for compose-time grounding.
+        """
+        try:
+            history_cfg = settings.supervisor_config.get("history", {})
+            max_turns = history_cfg.get("max-turns", 5)
+            # Keep upstream load bounded and aligned with planner behavior.
+            load_limit = max(20, max_turns * 2)
+            return await self.conversation_store.get_messages(session_id, limit=load_limit)
+        except Exception as e:
+            logger.warning("history_load_failed_for_compose", session_id=session_id, error=str(e))
+            return []
+
     async def _emit_routing_summary(self, session_id: str, task_id: str, results: List[Dict[str, Any]]) -> None:
         summary = [
-            {"order": i, "agent": r["agent"], "status": r["result"].get("status")}
+            {"order": i, "agent": r.get("agent_key"), "status": r.get("status")}
             for i, r in enumerate(results)
         ]
         await self.event_publisher.publish_progress(session_id, task_id, "routing_summary", {"steps": summary})

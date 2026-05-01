@@ -1086,7 +1086,19 @@
 
     let streaming = false;
     let abortController = null;
-    let sessionId = 'sess-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    const SESSION_STORAGE_KEY = 'smart_supervisor_session_id';
+    function getOrCreateSessionId() {
+      try {
+        const existing = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (existing && existing.trim()) return existing;
+      } catch (e) {}
+      const created = 'sess-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+      try {
+        localStorage.setItem(SESSION_STORAGE_KEY, created);
+      } catch (e) {}
+      return created;
+    }
+    let session_id = getOrCreateSessionId();
     let a2uiEnabled = false; 
     let activeStreamTaskId = '';
     let statusTicking = false;
@@ -1530,11 +1542,15 @@
     }
 
     async function rpcCall(method, params) {
+      const mergedParams = { ...(params || {}) };
+      if (!('session_id' in mergedParams) && session_id) {
+        mergedParams.session_id = session_id;
+      }
       const body = {
         jsonrpc: '2.0',
         id: `ui-rpc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         method,
-        params
+        params: mergedParams
       };
       const res = await fetch('/a2a/supervisor', {
         method: 'POST',
@@ -1612,7 +1628,7 @@
         const decideRes = await rpcCall('tasks/review/decide', {
           task_id: taskId,
           decision: decision,
-          session_id: sessionId,
+          session_id: session_id,
           comment: ''
         });
 
@@ -1628,7 +1644,7 @@
                 method: 'tasks/events',
                 params: {
                     task_id: taskId,
-                    session_id: sessionId,
+                    session_id: session_id,
                     cursor: cursor
                 }
             };
@@ -1664,7 +1680,10 @@
                   
                   const { event, data } = normalizeNestedSse(parsedOuter.event, parsedOuter.data);
                   const eventType = event;
-                  const parsed = data;
+                  let parsed = data;
+                  if (typeof parsed === 'string') {
+                    try { parsed = JSON.parse(parsed); } catch {}
+                  }
 
                   if (eventType === 'done' || eventType === 'error') {
                       finalizeHitlWaitingUi(ai, "완료");
@@ -1778,6 +1797,7 @@
         const decideRes = await rpcCall('tasks/review/decide', {
           task_id: taskId,
           decision,
+          session_id: session_id,
           comment: decision === 'APPROVE' ? 'approved_from_ui' : 'canceled_from_ui',
           client_request_id: `ui-decision-${Date.now()}`
         });
@@ -2027,7 +2047,7 @@
         id: `ui-${Date.now()}`,
         method: 'message/send',
         params: {
-          session_id: sessionId,
+          session_id: session_id,
           message: isAction ? JSON.stringify(actionPayload) : text
         }
       };
@@ -2063,7 +2083,7 @@
                 jsonrpc: '2.0',
                 id: `ui-sse-${Date.now()}`,
                 method: 'tasks/events',
-                params: { task_id: taskId, session_id: sessionId, cursor: '0' }
+                params: { task_id: taskId, session_id: session_id, cursor: '0' }
             };
             
             const sseRes = await fetch(streamEndpoint, {
@@ -2250,8 +2270,8 @@
         if (abortController) abortController.abort();
         
         // Rationale (Why): session/clear API deletes conversation and swarm state in Redis 
-        // for the fixed sessionId, ensuring a clean start without changing the auth-related ID.
-        const clearRes = await rpcCall('session/clear', { session_id: sessionId });
+        // for the fixed session_id, ensuring a clean start without changing the auth-related ID.
+        const clearRes = await rpcCall('session/clear', { session_id: session_id });
         if (clearRes?.error) {
             console.warn('Server-side session clear failed:', clearRes.error);
         }

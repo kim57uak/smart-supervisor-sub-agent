@@ -1,6 +1,18 @@
 from typing import Protocol, Dict, Any, Optional
 from ..domain.models import FrozenRoutingStep, FrozenExecutionPlan
 
+class OrchestrationEngine(Protocol):
+    """
+    Core port for the orchestration engine abstraction.
+    Allows switching between LangGraph, Burr, or other engines.
+    """
+    async def execute(self, 
+                      session_id: str, 
+                      task_id: str, 
+                      plan: FrozenExecutionPlan, 
+                      initial_state: Dict[str, Any]) -> Dict[str, Any]:
+        ...
+
 class StateGraphFactory(Protocol):
     """
     Port for generating the LangGraph StateGraph.

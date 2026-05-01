@@ -16,16 +16,16 @@ old_model_select = """        <select id="model">
         </select>"""
 content = content.replace(old_model_select, "")
 
-# 2. Add sessionId and remove modelEl JS references
+# 2. Add session_id and remove modelEl JS references
 content = content.replace(
     "const modelEl = document.getElementById('model');", 
     ""
 )
 
-if "let sessionId =" not in content:
+if "let session_id =" not in content:
     content = content.replace(
         "let abortController = null;",
-        "let abortController = null;\n    let sessionId = 'sess-' + Date.now() + '-' + Math.floor(Math.random() * 1000);"
+        "let abortController = null;\n    let session_id = 'sess-' + Date.now() + '-' + Math.floor(Math.random() * 1000);"
     )
 
 content = content.replace(
@@ -104,7 +104,7 @@ new_send_fetch = """        const payload = {
           id: requestId,
           method: 'message/send',
           params: {
-            session_id: sessionId,
+            session_id: session_id,
             message: isAction ? JSON.stringify(actionPayload) : text
           }
         };
@@ -201,7 +201,7 @@ new_stream_review = """    async function streamReviewDecision(ai, taskId, decis
       try {
         const decideRes = await rpcCall('tasks/review/decide', {
           task_id: taskId,
-          session_id: sessionId,
+          session_id: session_id,
           decision: decision,
           reason: ''
         });
@@ -271,7 +271,7 @@ content = content.replace(old_stream_review, new_stream_review)
 # 5. Fix clearBtn
 content = content.replace(
     "await fetch('/a2a/supervisor/clear', { method: 'POST' });",
-    "sessionId = 'sess-' + Date.now() + '-' + Math.floor(Math.random() * 1000);"
+    "session_id = 'sess-' + Date.now() + '-' + Math.floor(Math.random() * 1000);"
 )
 
 with open(html_file, 'w', encoding='utf-8') as f:

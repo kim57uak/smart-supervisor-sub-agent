@@ -40,7 +40,7 @@ class LlmResponseComposeService(ResponseComposeService):
             return "조회된 결과가 없습니다."
 
         results_str = "\n".join([
-            f"Agent [{res.get('agent')}]: {res.get('result', {}).get('payload', {}).get('answer')}"
+            f"Agent [{res.get('agent_key')}]: {res.get('payload', {}).get('answer')}"
             for res in results
         ])
         
@@ -91,13 +91,14 @@ class LlmResponseComposeService(ResponseComposeService):
 
         if not results:
             system_prompt = settings.prompts.get("compose-direct-system", settings.prompts["compose-system"])
+            user_prompt = f"Context History:\n{history_str}\n\nUser Message: {user_message or '안녕하세요'}"
             messages = [
                 ("system", system_prompt),
-                ("user", f"Context History:\n{history_str}\n\nUser Message: {user_message or '안녕하세요'}")
+                ("user", user_prompt)
             ]
         else:
             results_str = "\n".join([
-                f"Agent [{res.get('agent')}]: {res.get('result', {}).get('payload', {}).get('answer')}"
+                f"Agent [{res.get('agent_key')}]: {res.get('payload', {}).get('answer')}"
                 for res in results
             ])
             
@@ -119,7 +120,7 @@ class LlmResponseComposeService(ResponseComposeService):
             ]
 
         # A2UI early check (Spring AI style)
-        a2ui_enabled = settings.supervisor_config.get("a2ui", {}).get("enabled", False)
+        a2ui_enabled = settings.a2a.a2ui_enabled
         if a2ui_enabled:
             for res in results:
                 raw_payload = res.get("payload", {})
@@ -133,6 +134,7 @@ class LlmResponseComposeService(ResponseComposeService):
                     return
 
         try:
+            logger.debug("composer_prompts", system=system_prompt, user=user_prompt)
             token_count = 0
             async for chunk in self.llm.astream(messages):
                 # 1. Check for explicit reasoning/thinking content

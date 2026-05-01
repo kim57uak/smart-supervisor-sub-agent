@@ -80,6 +80,9 @@ class WorkflowFactory:
             "event_type": EventType.PROGRESS.value,
             "payload": {"stage": "load_context", "message": "실행 문맥 로드 중..."}
         }, trace_id=state["trace_id"])
+        existing_history = state.get("history") or []
+        if existing_history:
+            return {"history": existing_history, "loop_count": 0}
         return {
             "history": [Message(role=AgentRole.USER.value, content=state["user_message"])],
             "loop_count": 0
@@ -113,7 +116,14 @@ class WorkflowFactory:
                 "payload": {"tool": plan.tool_name, "message": f"도구 실행 중: {plan.tool_name}"}
             }, trace_id=state["trace_id"])
             # Rationale (Why): execute() implementation only expects 'plan'.
-            result = await self.executor.execute(plan)
+            result = await self.executor.execute(
+                plan,
+                runtime_fields={
+                    "session_id": state["session_id"],
+                    "trace_id": state["trace_id"],
+                    "task_id": state["task_id"],
+                },
+            )
             results.append(result)
             await self.publisher.publish(state["session_id"], state["task_id"], {
                 "event_type": EventType.TOOL_RESULT.value,
@@ -155,4 +165,3 @@ class WorkflowFactory:
             }, trace_id=state["trace_id"])
 
         return {"final_answer": final_answer, "status": ProcessStatus.COMPLETED}
-

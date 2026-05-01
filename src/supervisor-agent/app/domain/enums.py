@@ -1,6 +1,11 @@
 from enum import Enum
 
 
+class OrchestrationEngineType(Enum):
+    LANGGRAPH = "LANGGRAPH"
+    BURR = "BURR"
+
+
 class TaskState(Enum):
     CREATED = "CREATED"
     WAITING_REVIEW = "WAITING_REVIEW"

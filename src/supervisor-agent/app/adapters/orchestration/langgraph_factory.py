@@ -143,7 +143,11 @@ class LangGraphStateGraphFactory(StateGraphFactory):
         result = await self.invocation_service.invoke(
             step.agent_key,
             step.method,
-            step.arguments
+            {
+                **step.arguments,
+                "session_id": state["session_id"],
+                "task_id": state["task_id"],
+            }
         )
 
         # Doc 26: RAW data channel must be replayed
@@ -203,10 +207,7 @@ class LangGraphStateGraphFactory(StateGraphFactory):
         Also clears temporary runtime variables and updates Swarm Facts (Doc 03).
         """
         if state["last_result"]:
-            state["results"].append({
-                "agent": state["current_step"].agent_key if state.get("current_step") else "unknown",
-                "result": state["last_result"]
-            })
+            state["results"].append(state["last_result"])
             
             # Update Swarm Facts
             if self.fact_service:

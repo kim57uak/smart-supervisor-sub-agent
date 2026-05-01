@@ -1,5 +1,6 @@
 import uvicorn
 import structlog
+import json
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, APIRouter, status, Request, Depends
@@ -19,6 +20,7 @@ from app.core.dependencies import (
 )
 from app.infrastructure.redis_client import RedisClient
 from app.domain.exceptions import BaseAgentException
+from app.core.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -74,6 +76,55 @@ def create_app():
     from app.core.dependencies import get_agent_executor, get_auth_service
     from app.application.execution.executor import AgentExecutor
     from app.services.agent_authorization_service import AgentAuthorizationService
+    from app.api.support.a2a_handler import JsonRpcResponse
+
+    def extract_session_id(params: dict) -> str:
+        sid = params.get("session_id")
+        if sid:
+            return str(sid)
+        message = params.get("message")
+        if isinstance(message, dict):
+            metadata = message.get("metadata")
+            if isinstance(metadata, dict):
+                msid = metadata.get("session_id")
+                if msid:
+                    return str(msid)
+            parts = message.get("parts", [])
+            if isinstance(parts, list):
+                for part in parts:
+                    if not isinstance(part, dict):
+                        continue
+                    text = part.get("text")
+                    if not isinstance(text, str):
+                        continue
+                    try:
+                        decoded = json.loads(text)
+                        if isinstance(decoded, dict):
+                            dsid = decoded.get("session_id")
+                            if dsid:
+                                return str(dsid)
+                    except Exception:
+                        continue
+        return ""
+
+    async def resolve_session_id(params: dict) -> str:
+        sid = extract_session_id(params)
+        if sid:
+            return sid
+
+        task_id = str((params or {}).get("task_id", "")).strip()
+        if not task_id:
+            return ""
+
+        try:
+            redis = await RedisClient.get_client()
+            idx_key = f"{settings.redis_prefix}:supervisor:index:task_session:{task_id}"
+            raw = await redis.get(idx_key)
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+            return str(raw or "")
+        except Exception:
+            return ""
 
     @a2a_router.post("/product", status_code=status.HTTP_200_OK)
     async def product_agent(
@@ -82,7 +133,15 @@ def create_app():
         auth: AgentAuthorizationService = Depends(get_auth_service)
     ):
         # Rationale (Why): Security check is mandatory at the entry point.
-        await auth.assert_authorized(request.params.get("session_id", "default"), "sale-product")
+        session_id = await resolve_session_id(request.params or {})
+        if not session_id:
+            return JsonRpcResponse(
+                jsonrpc="2.0",
+                error={"code": -32602, "message": "session_id is required"},
+                id=request.id
+            )
+        request.params["session_id"] = session_id
+        await auth.assert_authorized(session_id, "sale-product")
         return await handle_a2a_request("sale-product", request, executor)
 
     @a2a_router.post("/reservation", status_code=status.HTTP_200_OK)
@@ -91,7 +150,15 @@ def create_app():
         executor: AgentExecutor = Depends(get_agent_executor),
         auth: AgentAuthorizationService = Depends(get_auth_service)
     ):
-        await auth.assert_authorized(request.params.get("session_id", "default"), "reservation")
+        session_id = await resolve_session_id(request.params or {})
+        if not session_id:
+            return JsonRpcResponse(
+                jsonrpc="2.0",
+                error={"code": -32602, "message": "session_id is required"},
+                id=request.id
+            )
+        request.params["session_id"] = session_id
+        await auth.assert_authorized(session_id, "reservation")
         return await handle_a2a_request("reservation", request, executor)
 
     @a2a_router.post("/weather", status_code=status.HTTP_200_OK)
@@ -100,7 +167,15 @@ def create_app():
         executor: AgentExecutor = Depends(get_agent_executor),
         auth: AgentAuthorizationService = Depends(get_auth_service)
     ):
-        await auth.assert_authorized(request.params.get("session_id", "default"), "weather")
+        session_id = await resolve_session_id(request.params or {})
+        if not session_id:
+            return JsonRpcResponse(
+                jsonrpc="2.0",
+                error={"code": -32602, "message": "session_id is required"},
+                id=request.id
+            )
+        request.params["session_id"] = session_id
+        await auth.assert_authorized(session_id, "weather")
         return await handle_a2a_request("weather", request, executor)
 
     @a2a_router.post("/supply-cost", status_code=status.HTTP_200_OK)
@@ -109,7 +184,15 @@ def create_app():
         executor: AgentExecutor = Depends(get_agent_executor),
         auth: AgentAuthorizationService = Depends(get_auth_service)
     ):
-        await auth.assert_authorized(request.params.get("session_id", "default"), "supply-cost")
+        session_id = await resolve_session_id(request.params or {})
+        if not session_id:
+            return JsonRpcResponse(
+                jsonrpc="2.0",
+                error={"code": -32602, "message": "session_id is required"},
+                id=request.id
+            )
+        request.params["session_id"] = session_id
+        await auth.assert_authorized(session_id, "supply-cost")
         return await handle_a2a_request("supply-cost", request, executor)
 
     app.include_router(a2a_router, prefix="/a2a", tags=["a2a"])

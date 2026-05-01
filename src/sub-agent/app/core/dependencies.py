@@ -4,6 +4,7 @@ from typing import Any, Optional
 from fastapi import Depends
 from .config import settings
 from ..infrastructure.redis_client import get_redis
+from ..domain.enums import OrchestrationEngineType
 
 logger = structlog.get_logger(__name__)
 
@@ -15,6 +16,9 @@ from ..adapters.mcp.mcp_adapters import McpExecutor
 from ..adapters.llm.llm_adapters import LlmPlanner, LlmComposer
 from ..adapters.mcp.mcp_infrastructure import McpTransportFactory, McpClientSessionManager
 from ..adapters.orchestration.langgraph_factory import WorkflowFactory
+from ..adapters.orchestration.langgraph_adapter import LangGraphAdapter
+from ..adapters.orchestration.burr_factory import BurrWorkflowFactory
+from ..adapters.orchestration.burr_adapter import BurrAdapter
 
 # Use Cases & Application logic
 from ..application.execution.chat_usecase import AgentChatUseCase
@@ -59,11 +63,33 @@ async def create_workflow_factory() -> WorkflowFactory:
     registry = await create_mcp_tool_registry()
     return WorkflowFactory(planner, executor, composer, adapter, registry)
 
-async def create_agent_executor() -> AgentExecutor:
+async def create_burr_factory() -> BurrWorkflowFactory:
+    planner = LlmPlanner()
+    executor = await create_tool_executor()
+    composer = LlmComposer()
+    adapter = await create_redis_adapter()
+    registry = await create_mcp_tool_registry()
+    return BurrWorkflowFactory(planner, executor, composer, adapter, registry)
+
+async def create_orchestration_engine() -> Any:
+    """
+    Factory for creating the orchestration engine based on settings.
+    """
+    engine_type = settings.orchestration_engine
+    
+    if engine_type == OrchestrationEngineType.BURR:
+        factory = await create_burr_factory()
+        return BurrAdapter(factory)
+    
+    # Default: LANGGRAPH
     factory = await create_workflow_factory()
+    return LangGraphAdapter(factory)
+
+async def create_agent_executor() -> AgentExecutor:
+    engine = await create_orchestration_engine()
     adapter = await create_redis_adapter()
     persistence = AgentPersistence(adapter)
-    return AgentExecutor(factory, persistence, adapter)
+    return AgentExecutor(engine, persistence, adapter)
 
 async def create_worker_service() -> WorkerExecutionService:
     # Rationale (Why): Explicitly instantiating to avoid any FastAPI wrapper interference.
@@ -121,12 +147,30 @@ async def get_workflow_factory(
 ) -> WorkflowFactory:
     return WorkflowFactory(planner, executor, composer, adapter, registry)
 
+async def get_burr_factory(
+    planner: LlmPlanner = Depends(get_planner),
+    executor: McpExecutor = Depends(get_tool_executor),
+    composer: LlmComposer = Depends(get_composer),
+    adapter: RedisAdapter = Depends(get_redis_adapter),
+    registry: McpToolRegistry = Depends(get_mcp_tool_registry)
+) -> BurrWorkflowFactory:
+    return BurrWorkflowFactory(planner, executor, composer, adapter, registry)
+
+async def get_orchestration_engine(
+    engine_type: OrchestrationEngineType = settings.orchestration_engine,
+    lg_factory: WorkflowFactory = Depends(get_workflow_factory),
+    br_factory: BurrWorkflowFactory = Depends(get_burr_factory)
+) -> Any:
+    if engine_type == OrchestrationEngineType.BURR:
+        return BurrAdapter(br_factory)
+    return LangGraphAdapter(lg_factory)
+
 async def get_agent_executor(
-    factory: WorkflowFactory = Depends(get_workflow_factory),
+    engine: Any = Depends(get_orchestration_engine),
     persistence: AgentPersistence = Depends(get_persistence),
     adapter: RedisAdapter = Depends(get_redis_adapter)
 ) -> AgentExecutor:
-    return AgentExecutor(factory, persistence, adapter)
+    return AgentExecutor(engine, persistence, adapter)
 
 async def get_agent_usecase(
     persistence: AgentPersistence = Depends(get_persistence),

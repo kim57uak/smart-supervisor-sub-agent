@@ -18,17 +18,25 @@ class LlmPlanner(Planner):
     def __init__(self):
         self.model = LlmRuntime.get_chat_model()
 
+    @staticmethod
+    def _extract_user_message(context: PlanningContext) -> str:
+        for m in reversed(context.history):
+            if m.role == AgentRole.USER.value:
+                return m.content
+        return ""
+
     async def plan(self, context: PlanningContext) -> List[ToolPlan]:
         prompts = settings.prompts
         agent_system = prompts.get("agent-system", "")
         tool_choice = prompts.get("tool-choice", "")
         template = prompts.get("tool-planning-prompt-template", "")
         
+        user_message = self._extract_user_message(context)
         system_prompt = template.format(
             agentSystem=agent_system,
             toolChoice=tool_choice,
-            serverCatalog=str(context.available_tools),
-            userMessage=context.history[-1].content if context.history else "",
+            serverCatalog=json.dumps(context.available_tools, ensure_ascii=False),
+            userMessage=user_message,
             dateHints="N/A",
             executedTools="[]",
             latestResult="N/A"
@@ -36,12 +44,16 @@ class LlmPlanner(Planner):
         
         messages = [
             SystemMessage(content=system_prompt),
-            *[HumanMessage(content=m.content) if m.role == AgentRole.USER.value else SystemMessage(content=m.content) for m in context.history]
+            HumanMessage(content=user_message) if user_message else HumanMessage(content="")
         ]
+        
+        logger.info("llm_planning_start", tool_count=len(context.available_tools), history_len=len(context.history))
         
         try:
             response = await self.model.ainvoke(messages)
             raw_content = response.content
+            
+            logger.debug("llm_planning_raw_response", content=raw_content)
             
             if "```json" in raw_content:
                 raw_content = raw_content.split("```json")[1].split("```")[0].strip()
@@ -49,12 +61,20 @@ class LlmPlanner(Planner):
             data = json.loads(raw_content)
             plans_data = data.get("plans", [])
             
-            return [ToolPlan(
-                tool_name=p.get("tool"),
-                server_name=p.get("server"),
-                arguments=p.get("arguments", {}),
-                reasoning=p.get("reason", "")
-            ) for p in plans_data]
+            logger.info("llm_planning_success", plan_count=len(plans_data))
+            
+            tool_plans = []
+            for p in plans_data:
+                tool_name = p.get("tool")
+                logger.info("tool_selected", tool=tool_name, reasoning=p.get("reason", ""))
+                tool_plans.append(ToolPlan(
+                    tool_name=tool_name,
+                    server_name=p.get("server"),
+                    arguments=p.get("arguments", {}),
+                    reasoning=p.get("reason", "")
+                ))
+            
+            return tool_plans
             
         except Exception as e:
             logger.error("planning_failed", error=str(e))
@@ -66,6 +86,14 @@ class LlmComposer(Composer):
     """
     def __init__(self):
         self.model = LlmRuntime.get_chat_model()
+
+    @staticmethod
+    def _extract_user_message(context: PlanningContext) -> str:
+        # Compose 단계는 history 전체를 전달하지 않고 사용자 메시지만 사용한다.
+        for m in reversed(context.history):
+            if m.role == AgentRole.USER.value:
+                return m.content
+        return ""
 
     async def stream_compose(self, context: PlanningContext) -> AsyncIterator[AiChatChunk]:
         """
@@ -84,8 +112,8 @@ class LlmComposer(Composer):
             baseSystem=base_system,
             finalAnswer=final_answer,
             composeRules=compose_rules,
-            userMessage=context.history[-1].content if context.history else "",
-            history=str([m.model_dump() for m in context.history]),
+            userMessage=self._extract_user_message(context),
+            history="[]",
             toolResult=tool_results_str
         )
         

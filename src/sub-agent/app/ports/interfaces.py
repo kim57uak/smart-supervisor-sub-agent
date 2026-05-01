@@ -2,13 +2,24 @@ from typing import Protocol, List, Dict, Any, AsyncIterator, Optional
 from ..domain.models import PlanningContext, ToolPlan, AgentExecutionResult, AgentTask, AiChatChunk
 from ..domain.enums import ProcessStatus
 
+class OrchestrationEngine(Protocol):
+    """
+    Port for the orchestration engine abstraction.
+    Allows switching between LangGraph and Burr.
+    """
+    async def execute(self, 
+                      session_id: str, 
+                      task_id: str, 
+                      initial_state: Dict[str, Any]) -> Dict[str, Any]:
+        ...
+
 class Planner(Protocol):
     """Abstract Port for planning tool calls."""
     async def plan(self, context: PlanningContext) -> List[ToolPlan]: ...
 
 class ToolExecutor(Protocol):
     """Abstract Port for executing MCP tools."""
-    async def execute(self, plan: ToolPlan) -> Dict[str, Any]: ...
+    async def execute(self, plan: ToolPlan, runtime_fields: Optional[Dict[str, Any]] = None) -> Dict[str, Any]: ...
 
 class Composer(Protocol):
     """Abstract Port for composing final answers."""
@@ -22,6 +33,8 @@ class Store(Protocol):
     async def update_task_status(self, task_id: str, status: ProcessStatus) -> None: ...
     async def save_swarm_state(self, session_id: str, state: Dict[str, Any]) -> None: ...
     async def load_swarm_state(self, session_id: str) -> Dict[str, Any]: ...
+    async def save_message(self, session_id: str, message: Dict[str, Any]) -> None: ...
+    async def get_messages(self, session_id: str, limit: int = 20) -> List[Dict[str, Any]]: ...
 
 class TaskQueue(Protocol):
     """Abstract Port for task queuing."""

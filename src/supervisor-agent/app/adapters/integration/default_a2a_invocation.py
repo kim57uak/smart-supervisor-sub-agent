@@ -77,18 +77,66 @@ class DefaultA2AInvocationService(A2AInvocationService):
         import uuid
         
         # arguments에서 message 추출
-        message = arguments.get("message", str(arguments))
+        message = arguments.get("message")
+        if not message:
+            # message가 없으면 전체 arguments를 문자열로 변환하되, 가독성 좋게 JSON 덤프
+            message = json.dumps(arguments, ensure_ascii=False)
         
+        session_id = arguments.get("session_id")
+        if not session_id:
+            raise ValueError("session_id is required for downstream A2A invocation")
+
+        message_part_payload = {
+            "text": message
+        }
+        # Add identity backup path inside message part text for resilient downstream parsing.
+        try:
+            message_part_payload["text"] = json.dumps(
+                {
+                    "message": message,
+                    "session_id": session_id,
+                    "task_id": arguments.get("task_id"),
+                    "trace_id": arguments.get("trace_id"),
+                    "request_id": arguments.get("request_id"),
+                },
+                ensure_ascii=False,
+            )
+        except Exception:
+            # Keep plain message when JSON serialization is not possible.
+            pass
+
+        params = {
+            "message": {
+                "role": "user",
+                "parts": [message_part_payload],
+                "metadata": {
+                    "session_id": session_id,
+                    "task_id": arguments.get("task_id"),
+                    "trace_id": arguments.get("trace_id"),
+                    "request_id": arguments.get("request_id"),
+                },
+            },
+            "session_id": session_id,
+        }
+        # Propagate supervisor identity fields to downstream sub-agent.
+        for key in ["task_id", "trace_id", "request_id"]:
+            value = arguments.get(key)
+            if value:
+                params[key] = value
+        logger.info(
+            "a2a_payload_built",
+            agent_key=agent_key,
+            method=method,
+            has_session_id=bool(params.get("session_id")),
+            has_task_id=bool(params.get("task_id")),
+            params_keys=list(params.keys()),
+        )
+
         return {
             "jsonrpc": "2.0",
             "id": f"sup-{agent_key}-{uuid.uuid4().hex[:8]}",
             "method": method,
-            "params": {
-                "message": {
-                    "role": "user",
-                    "parts": [{"text": message}]
-                }
-            }
+            "params": params
         }
 
     async def invoke(self, agent_key: str, method: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -294,7 +342,11 @@ class DefaultA2AInvocationService(A2AInvocationService):
                     if texts:
                         return "\n".join(texts)
             
-            # Fallback: result.answer 또는 result.message
+            # Fallback: result.payload.answer, result.answer 또는 result.message
+            payload = result.get("payload")
+            if isinstance(payload, dict) and "answer" in payload:
+                return str(payload["answer"])
+                
             if "answer" in result:
                 return str(result["answer"])
             if "message" in result and isinstance(result["message"], str):

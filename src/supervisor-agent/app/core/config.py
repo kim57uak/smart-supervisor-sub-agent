@@ -2,14 +2,68 @@ import os
 import yaml
 import structlog
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AliasGenerator, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = structlog.get_logger(__name__)
 
-# --- 하위 설정 모델 정의 (Type Safety) ---
+def to_dash(string: str) -> str:
+    """Rationale (Why): Converts snake_case to dash-case for YAML compatibility."""
+    return string.replace("_", "-")
 
-from ..domain.enums import RedisNamespace
+from ..domain.enums import RedisNamespace, OrchestrationEngineType
+
+# --- 코드성 데이터 상수화 (Constants & Enums) ---
+
+class A2aMethod:
+    MESSAGE_SEND = "message/send"
+    SEND_MESSAGE = "SendMessage"
+    MESSAGE_STREAM = "message/stream"
+    SEND_STREAMING_MESSAGE = "SendStreamingMessage"
+    TASKS_GET = "tasks/get"
+    GET_TASK = "GetTask"
+    TASKS_LIST = "tasks/list"
+    LIST_TASKS = "ListTasks"
+    TASKS_CANCEL = "tasks/cancel"
+    CANCEL_TASK = "CancelTask"
+    TASKS_EVENTS = "tasks/events"
+    TASK_EVENTS = "TaskEvents"
+    REVIEW_GET = "tasks/review/get"
+    REVIEW_DECIDE = "tasks/review/decide"
+    AGENT_CARD = "agent/card"
+    SESSION_CLEAR = "session/clear"
+    CLEAR_SESSION = "ClearSession"
+
+class DefaultConfig:
+    # App
+    API_PREFIX = "/a2a/supervisor"
+    
+    # Method Allowlist
+    ALLOWLIST = [
+        A2aMethod.MESSAGE_SEND, A2aMethod.SEND_MESSAGE,
+        A2aMethod.MESSAGE_STREAM, A2aMethod.SEND_STREAMING_MESSAGE,
+        A2aMethod.TASKS_GET, A2aMethod.GET_TASK,
+        A2aMethod.TASKS_LIST, A2aMethod.LIST_TASKS,
+        A2aMethod.TASKS_CANCEL, A2aMethod.CANCEL_TASK,
+        A2aMethod.TASKS_EVENTS, A2aMethod.TASK_EVENTS,
+        A2aMethod.REVIEW_GET, A2aMethod.REVIEW_DECIDE,
+        A2aMethod.AGENT_CARD, A2aMethod.SESSION_CLEAR, A2aMethod.CLEAR_SESSION
+    ]
+    
+    # Routing Defaults
+    ROUTING = {
+        "product": "http://127.0.0.1:8082/a2a/product",
+        "reservation": "http://127.0.0.1:8082/a2a/reservation",
+        "supply-cost": "http://127.0.0.1:8082/a2a/supply-cost",
+        "weather": "http://127.0.0.1:8082/a2a/weather"
+    }
+    
+    # Defaults
+    ENGINE = OrchestrationEngineType.LANGGRAPH
+    TIMEOUT_MS = 120000
+    REDIS_URL = "redis://localhost:6379/0"
+
+# --- 하위 설정 모델 정의 (Type Safety) ---
 
 class LlmProviderSettings(BaseModel):
     model: str = "gpt-4o-mini"
@@ -24,7 +78,7 @@ class LlmSettings(BaseModel):
     }
 
 class RedisSettings(BaseModel):
-    url: str = "redis://localhost:6379/0"
+    url: str = DefaultConfig.REDIS_URL
     prefix: str = RedisNamespace.GLOBAL_PREFIX.value
     ttl_seconds: int = 1800
     task_prefix: str = RedisNamespace.TASK.value
@@ -32,21 +86,24 @@ class RedisSettings(BaseModel):
 
 class RoutingAgentSettings(BaseModel):
     endpoint: str
-    method: str = "message/send"
-    timeout_ms: int = 120000
+    method: str = A2aMethod.MESSAGE_SEND
+    timeout_ms: int = DefaultConfig.TIMEOUT_MS
+
+class HitlSettings(BaseModel):
+    model_config = ConfigDict(alias_generator=AliasGenerator(validation_alias=to_dash))
+    reason_messages: Dict[str, str] = {}
 
 class A2aSettings(BaseModel):
-    method_allowlist: List[str] = [
-        "message/send", "SendMessage", "message/stream", "SendStreamingMessage",
-        "tasks/get", "GetTask", "tasks/list", "ListTasks", "tasks/cancel", "CancelTask"
-    ]
+    model_config = ConfigDict(alias_generator=AliasGenerator(validation_alias=to_dash))
+    
+    method_allowlist: List[str] = DefaultConfig.ALLOWLIST
     routing: Dict[str, RoutingAgentSettings] = {
-        "product": RoutingAgentSettings(endpoint="http://localhost:8082/a2a/product"),
-        "reservation": RoutingAgentSettings(endpoint="http://localhost:8082/a2a/reservation")
+        k: RoutingAgentSettings(endpoint=v) for k, v in DefaultConfig.ROUTING.items()
     }
     max_concurrency: int = 2
     a2ui_enabled: bool = True
     max_handoff_hops: int = 3
+    hitl: HitlSettings = HitlSettings()
 
 # --- 메인 설정 클래스 ---
 
@@ -56,17 +113,22 @@ class Settings(BaseSettings):
     version: str = "1.0.0"
     embedded_worker_enabled: bool = True
     
-    api_prefix: str = "/a2a/supervisor"
+    # API Configuration
+    api_prefix: str = DefaultConfig.API_PREFIX
+    orchestration_engine: OrchestrationEngineType = DefaultConfig.ENGINE
     allowed_hosts: List[str] = ["*"]
     
-    # 계층형 설정 주입
+    # Redis Configuration
+    redis_url: str = DefaultConfig.REDIS_URL
+    
+    # API Keys
+    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
+    
+    # Nested Settings
     redis: RedisSettings = RedisSettings()
     llm: LlmSettings = LlmSettings()
     a2a: A2aSettings = A2aSettings()
-    
-    # 보안 (환경 변수 우선)
-    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
-    google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
 
     model_config = SettingsConfigDict(
         env_file=".env", 
@@ -75,53 +137,50 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    _yaml_cache: Dict[str, Any] = {}
-
-    def _load_yaml(self, filename: str) -> Dict[str, Any]:
-        if filename in self._yaml_cache:
-            return self._yaml_cache[filename]
-        
-        filepath = os.path.join(os.path.dirname(__file__), "..", "config", filename)
-        if os.path.exists(filepath):
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                    self._yaml_cache[filename] = data or {}
-                    return self._yaml_cache[filename]
-            except Exception as e:
-                logger.error("failed_to_load_yaml", filename=filename, error=str(e))
-        return {}
+    _prompt_cache: Dict[str, Any] = {}
+    _hitl_cache: Dict[str, Any] = {}
 
     @property
     def prompts(self) -> Dict[str, Any]:
-        data = self._load_yaml("prompts.yml")
-        return data.get("supervisor", {}).get("prompts", {})
+        """Loads prompts from app/config/prompts.yml if not already cached."""
+        if not self._prompt_cache:
+            path = os.path.join(os.path.dirname(__file__), "..", "config", "prompts.yml")
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                        self._prompt_cache = data.get("supervisor", {}).get("prompts", {})
+                except Exception:
+                    pass
+        return self._prompt_cache
 
     @property
     def hitl_messages(self) -> Dict[str, Any]:
-        data = self._load_yaml("hitl_messages.yml")
-        return data.get("host", {}).get("a2a", {}).get("hitl", {}).get("reason-messages", {})
+        """Loads HITL reason messages from app/config/hitl_messages.yml."""
+        if not self._hitl_cache:
+            path = os.path.join(os.path.dirname(__file__), "..", "config", "hitl_messages.yml")
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                        self._hitl_cache = data.get("host", {}).get("a2a", {}).get("hitl", {}).get("reason-messages", {})
+                except Exception:
+                    pass
+        return self._hitl_cache
+
+    # Backward compatibility for existing code
+    @property
+    def orchestration_engine_setting(self) -> OrchestrationEngineType:
+        return self.orchestration_engine
 
     @property
     def supervisor_config(self) -> Dict[str, Any]:
-        data = self._load_yaml("supervisor.yml")
-        # Rationale (Why): supervisor.yml is the source of truth for A2A routing and policies.
-        # We merge the YAML content with the Pydantic model defaults.
-        yaml_config = data.get("host", {}).get("a2a", {})
-        if not yaml_config:
-            return self.a2a.model_dump()
-            
-        # Merge logic: YAML takes precedence over code defaults
-        base = self.a2a.model_dump()
-        base.update(yaml_config)
-        return base
+        return self.a2a.model_dump(by_alias=True)
 
     @property
     def llm_config(self) -> Dict[str, Any]:
         return self.llm.model_dump()
 
-    @property
-    def redis_url(self) -> str: return self.redis.url
     @property
     def redis_prefix(self) -> str: return self.redis.prefix
     @property

@@ -30,15 +30,15 @@ class ExecutionConsistencyCoordinator:
     def _get_task_key(self, session_id: str, task_id: str) -> str:
         return f"{settings.redis_prefix}:supervisor:session:{session_id}:task:{task_id}"
 
-    def _get_request_lock_key(self, request_id: str) -> str:
-        return f"{settings.redis_prefix}:supervisor:request_lock:{request_id}"
+    def _get_request_lock_key(self, session_id: str, request_id: str) -> str:
+        return f"{settings.redis_prefix}:supervisor:request_lock:{session_id}:{request_id}"
 
-    async def check_and_reserve_request(self, request_id: str, task_id: str) -> Tuple[bool, Optional[str]]:
+    async def check_and_reserve_request(self, session_id: str, request_id: str, task_id: str) -> Tuple[bool, Optional[str]]:
         """
-        Uses Redis SET NX to ensure a request_id is processed only once.
+        Uses Redis SET NX to ensure a (session_id + request_id) composite key is processed only once.
         Returns (is_new, existing_task_id).
         """
-        lock_key = self._get_request_lock_key(request_id)
+        lock_key = self._get_request_lock_key(session_id, request_id)
         # Lock expires after 1 hour to prevent indefinite pollution but cover long executions
         success = await self.redis.set(lock_key, task_id, nx=True, ex=3600)
         
@@ -61,6 +61,13 @@ class ExecutionConsistencyCoordinator:
             "state": TaskState.WAITING_REVIEW.value,
             "version": 0
         })
+        
+        # Rationale (Why): We must index the task_id -> session_id mapping early so that 
+        # the event streaming service can resolve the stream path correctly even before 
+        # the first event is appended by the worker.
+        idx_key = f"{settings.redis_prefix}:supervisor:index:task_session:{task_id}"
+        await self.redis.set(idx_key, session_id, ex=settings.redis_ttl_seconds)
+        
         await self.redis.expire(task_key, settings.redis_ttl_seconds)
 
     async def transition_to_running(self, session_id: str, task_id: str):
@@ -72,6 +79,11 @@ class ExecutionConsistencyCoordinator:
             "state": TaskState.RUNNING.value,
             "version": 0
         })
+        
+        # Index the task-session mapping
+        idx_key = f"{settings.redis_prefix}:supervisor:index:task_session:{task_id}"
+        await self.redis.set(idx_key, session_id, ex=settings.redis_ttl_seconds)
+        
         await self.redis.expire(task_key, settings.redis_ttl_seconds)
 
     async def start_approved_resume(self, session_id: str, task_id: str, expected_version: int) -> Tuple[bool, ReasonCode, Optional[int]]:

@@ -59,7 +59,7 @@ if send_start != -1:
         id: `ui-${Date.now()}`,
         method: 'message/send',
         params: {
-          session_id: sessionId,
+          session_id: session_id,
           message: isAction ? JSON.stringify(actionPayload) : text
         }
       };
@@ -99,7 +99,7 @@ if stream_start != -1:
       try {
         const decideRes = await rpcCall('tasks/review/decide', {
           task_id: taskId,
-          session_id: sessionId,
+          session_id: session_id,
           decision: decision,
           reason: ''
         });

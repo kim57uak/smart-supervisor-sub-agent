@@ -1,5 +1,10 @@
 from enum import Enum
 
+class OrchestrationEngineType(Enum):
+    LANGGRAPH = "LANGGRAPH"
+    BURR = "BURR"
+
+
 class ProcessStatus(Enum):
     ACCEPTED = "ACCEPTED"
     RUNNING = "RUNNING"

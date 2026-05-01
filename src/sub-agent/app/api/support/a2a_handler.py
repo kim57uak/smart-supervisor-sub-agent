@@ -36,6 +36,35 @@ async def handle_a2a_request(
     
     # Rationale (Why): If executor is provided, use the actual LangGraph workflow.
     if canonical_method in ["SendMessage", "SendStreamingMessage"] and executor:
+        def _recover_session_id_from_params(params: Dict[str, Any]) -> str:
+            sid = params.get("session_id")
+            if sid:
+                return str(sid)
+            message_obj = params.get("message")
+            if isinstance(message_obj, dict):
+                metadata = message_obj.get("metadata")
+                if isinstance(metadata, dict):
+                    msid = metadata.get("session_id")
+                    if msid:
+                        return str(msid)
+                parts = message_obj.get("parts", [])
+                if isinstance(parts, list):
+                    for part in parts:
+                        if not isinstance(part, dict):
+                            continue
+                        text = part.get("text")
+                        if not isinstance(text, str):
+                            continue
+                        try:
+                            decoded = __import__("json").loads(text)
+                            if isinstance(decoded, dict):
+                                dsid = decoded.get("session_id")
+                                if dsid:
+                                    return str(dsid)
+                        except Exception:
+                            continue
+            return ""
+
         message = request.params.get("message", "")
         
         # Rationale (Why): Handle rich message format (e.g. Gemini parts) from supervisor
@@ -46,7 +75,12 @@ async def handle_a2a_request(
             else:
                 message = str(message)
         
-        session_id = request.params.get("session_id", "default-session")
+        session_id = request.params.get("session_id") or _recover_session_id_from_params(request.params)
+        if not session_id:
+            return JsonRpcResponse(
+                error={"code": -32602, "message": "session_id is required"},
+                id=request.id
+            )
         trace_id = request.params.get("trace_id", "unknown")
         task_id = request.params.get("task_id", f"task-{id(request)}")
 

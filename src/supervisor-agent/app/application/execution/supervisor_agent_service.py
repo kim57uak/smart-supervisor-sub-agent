@@ -8,6 +8,7 @@ from .supervisor_graph_execution_service import SupervisorGraphExecutionService
 from .task_queue_service import TaskQueueService
 from ..read.supervisor_read_facade import SupervisorReadFacade
 from ..persistence.supervisor_execution_persistence_service import SupervisorExecutionPersistenceService
+from ...ports.store_ports import ConversationStore
 from ...domain.enums import ReasonCode, ProcessStatus, TaskState
 from ...core.config import settings
 
@@ -26,6 +27,7 @@ class SupervisorAgentService:
         read_facade: SupervisorReadFacade,
         persistence_facade: SupervisorExecutionPersistenceService,
         task_queue: TaskQueueService,
+        conversation_store: ConversationStore,
         pre_hitl_a2ui: Any = None,
     ):
         self.hitl_gate = hitl_gate
@@ -33,6 +35,7 @@ class SupervisorAgentService:
         self.read_facade = read_facade
         self.persistence_facade = persistence_facade
         self.task_queue = task_queue
+        self.conversation_store = conversation_store
         self.pre_hitl_a2ui = pre_hitl_a2ui
 
     async def execute_task(
@@ -50,7 +53,7 @@ class SupervisorAgentService:
 
         # 1. Idempotency Check
         is_new, effective_task_id = await self.persistence_facade.strategy_factory.coordinator.check_and_reserve_request(
-            request_id, task_id
+            session_id, request_id, task_id
         )
         if not is_new:
             log.info("duplicate_request_detected", task_id=effective_task_id)
@@ -58,6 +61,12 @@ class SupervisorAgentService:
 
         task_id = effective_task_id
         log = log.bind(task_id=task_id)
+
+        # Persist user turn so next request can load it from history.
+        await self.conversation_store.save_message(
+            session_id,
+            {"role": "user", "content": message, "request_id": request_id},
+        )
 
         # 2. HITL (Human-In-The-Loop) Decision
         review_required, plan = await self.hitl_gate.evaluate_and_open_review(
@@ -67,10 +76,17 @@ class SupervisorAgentService:
         # 3. Process result paths
         if review_required:
             log.info("task_state_transition", to_state=ProcessStatus.WAITING_REVIEW.value)
+            
+            # Check for pre-HITL A2UI form
+            a2ui_form = None
+            if self.pre_hitl_a2ui:
+                a2ui_form = self.pre_hitl_a2ui.build_pre_hitl_form(plan)
+            
             return {
                 "task_id": task_id,
                 "status": ProcessStatus.WAITING_REVIEW.value,
-                "review_reason": getattr(plan, "review_reason", "사용자 승인이 필요합니다.")
+                "review_reason": getattr(plan, "review_reason", "사용자 승인이 필요합니다."),
+                "a2ui": a2ui_form
             }
 
         if self._is_direct_answer(plan):
@@ -93,8 +109,9 @@ class SupervisorAgentService:
 
     async def handle_review_decision(self, request: Any) -> Tuple[bool, ReasonCode, Any]:
         """Processes human review decisions (APPROVE/CANCEL)."""
-        session_id = request.session_id or "unknown"
+        session_id = await self._resolve_session_id_for_review(request)
         task_id = request.task_id
+        request.session_id = session_id
         log = logger.bind(session_id=session_id, task_id=task_id)
 
         verification = await self.read_facade.verify_snapshot(
@@ -110,6 +127,42 @@ class SupervisorAgentService:
             return True, ReasonCode.SUCCESS, None
 
         return await self._process_approval(session_id, task_id, log)
+
+    async def _resolve_session_id_for_review(self, request: Any) -> str:
+        """
+        Resolves session_id for HITL review decisions.
+        Priority:
+        1) explicit request.session_id
+        2) request.request_params.session_id
+        3) Redis task-session index (task_id -> session_id)
+        """
+        explicit = getattr(request, "session_id", None)
+        if explicit:
+            return str(explicit)
+
+        nested = getattr(request, "request_params", None)
+        if isinstance(nested, dict):
+            nested_sid = nested.get("session_id")
+            if nested_sid:
+                return str(nested_sid)
+
+        task_id = getattr(request, "task_id", "")
+        if not task_id:
+            return "unknown"
+
+        try:
+            coordinator = self.persistence_facade.strategy_factory.coordinator
+            idx_key = f"{settings.redis_prefix}:supervisor:index:task_session:{task_id}"
+            raw = await coordinator.redis.get(idx_key)
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+            if raw:
+                logger.info("review_session_resolved_from_index", task_id=task_id, session_id=raw)
+                return str(raw)
+        except Exception as e:
+            logger.warning("review_session_resolve_failed", task_id=task_id, error=str(e))
+
+        return "unknown"
 
     async def cancel_task(self, session_id: str, task_id: str) -> bool:
         """Explicitly cancel a task."""

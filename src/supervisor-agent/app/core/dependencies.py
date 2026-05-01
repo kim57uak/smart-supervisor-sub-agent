@@ -4,6 +4,7 @@ from redis.asyncio import Redis
 
 from .config import settings
 from ..infrastructure.redis.redis_client import get_redis
+from ..domain.enums import OrchestrationEngineType
 
 # Stores
 from ..adapters.store.redis_stores import (
@@ -20,6 +21,9 @@ from ..adapters.llm.llm_planning_service import LlmPlanningService
 from ..adapters.llm.llm_compose_service import LlmResponseComposeService
 from ..adapters.integration.default_a2a_invocation import DefaultA2AInvocationService
 from ..adapters.orchestration.langgraph_factory import LangGraphStateGraphFactory
+from ..adapters.orchestration.langgraph_adapter import LangGraphAdapter
+from ..adapters.orchestration.burr_factory import BurrWorkflowFactory
+from ..adapters.orchestration.burr_adapter import BurrAdapter
 from ..adapters.orchestration.handoff_policy import DefaultHandoffPolicyService
 
 # CQRS
@@ -115,17 +119,44 @@ async def get_progress_publisher(
 ) -> SupervisorProgressPublisher:
     return SupervisorProgressPublisher(event_service)
 
-async def get_supervisor_graph_execution_service(
+async def get_orchestration_engine(
     invocation_service: DefaultA2AInvocationService = Depends(get_invocation_service),
     handoff_service: DefaultHandoffPolicyService = Depends(get_handoff_service),
     progress_publisher: SupervisorProgressPublisher = Depends(get_progress_publisher),
-    persistence_facade: SupervisorExecutionPersistenceService = Depends(get_persistence_facade),
-    compose_service: LlmResponseComposeService = Depends(get_compose_service),
     fact_service: FactGovernanceService = Depends(get_fact_service),
     task_store: RedisTaskStore = Depends(get_task_store)
+) -> Any:
+    """
+    Factory dependency to choose the orchestration engine based on settings.
+    """
+    engine_type = settings.orchestration_engine_setting
+    
+    if engine_type == OrchestrationEngineType.BURR:
+        factory = BurrWorkflowFactory(
+            invocation_service, handoff_service, progress_publisher, fact_service, task_store
+        )
+        return BurrAdapter(factory)
+    
+    # Default: LANGGRAPH
+    graph_factory = LangGraphStateGraphFactory(
+        invocation_service, handoff_service, progress_publisher, fact_service, task_store
+    )
+    return LangGraphAdapter(graph_factory)
+
+async def get_supervisor_graph_execution_service(
+    engine: Any = Depends(get_orchestration_engine),
+    persistence_facade: SupervisorExecutionPersistenceService = Depends(get_persistence_facade),
+    compose_service: LlmResponseComposeService = Depends(get_compose_service),
+    progress_publisher: SupervisorProgressPublisher = Depends(get_progress_publisher),
+    conversation_store: RedisConversationStore = Depends(get_conversation_store),
 ) -> SupervisorGraphExecutionService:
-    graph_factory = LangGraphStateGraphFactory(invocation_service, handoff_service, progress_publisher, fact_service, task_store)
-    return SupervisorGraphExecutionService(graph_factory, persistence_facade, compose_service, progress_publisher)
+    return SupervisorGraphExecutionService(
+        engine,
+        persistence_facade,
+        compose_service,
+        progress_publisher,
+        conversation_store,
+    )
 
 async def get_supervisor_agent_service(
     hitl_gate: HitlGateService = Depends(get_hitl_gate_service),
@@ -133,9 +164,18 @@ async def get_supervisor_agent_service(
     read_facade: SupervisorReadFacade = Depends(get_read_facade),
     persistence_facade: SupervisorExecutionPersistenceService = Depends(get_persistence_facade),
     task_queue: TaskQueueService = Depends(get_task_queue_service),
+    conversation_store: RedisConversationStore = Depends(get_conversation_store),
     pre_hitl_a2ui: Any = Depends(get_pre_hitl_a2ui_service)
 ) -> SupervisorAgentService:
-    return SupervisorAgentService(hitl_gate, graph_execution, read_facade, persistence_facade, task_queue, pre_hitl_a2ui)
+    return SupervisorAgentService(
+        hitl_gate,
+        graph_execution,
+        read_facade,
+        persistence_facade,
+        task_queue,
+        conversation_store,
+        pre_hitl_a2ui,
+    )
 
 # Validators and Translators
 from ..application.execution.supervisor_exception_translator import SupervisorExceptionTranslator
@@ -168,13 +208,28 @@ async def get_worker_execution_service() -> WorkerExecutionService:
     fact_service = FactGovernanceService(swarm_state_store)
     
     task_store = RedisTaskStore()
-    graph_factory = LangGraphStateGraphFactory(invocation_service, handoff_service, publisher, fact_service, task_store)
+    conversation_store = RedisConversationStore()
+    
+    # Engine Abstraction (Strategy Pattern)
+    engine_type = settings.orchestration_engine_setting
+    if engine_type == OrchestrationEngineType.BURR:
+        factory = BurrWorkflowFactory(invocation_service, handoff_service, publisher, fact_service, task_store)
+        engine = BurrAdapter(factory)
+    else:
+        graph_factory = LangGraphStateGraphFactory(invocation_service, handoff_service, publisher, fact_service, task_store)
+        engine = LangGraphAdapter(graph_factory)
     
     snapshot_store = RedisExecutionSnapshotStore()
     coordinator = ExecutionConsistencyCoordinator(task_store, snapshot_store, swarm_state_store, redis)
     persistence_factory = PersistenceStrategyFactory(coordinator, event_service)
     persistence_service = SupervisorExecutionPersistenceService(persistence_factory)
     
-    graph_execution = SupervisorGraphExecutionService(graph_factory, persistence_service, compose_service, publisher)
+    graph_execution = SupervisorGraphExecutionService(
+        engine,
+        persistence_service,
+        compose_service,
+        publisher,
+        conversation_store,
+    )
     
     return WorkerExecutionService(task_queue, graph_execution, publisher)

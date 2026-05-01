@@ -95,6 +95,16 @@ class RedisAdapter(Store, TaskQueue, ProgressPublisher):
         data = await self.client.get(key)
         return json.loads(data) if data else {}
 
+    async def save_message(self, session_id: str, message: Dict[str, Any]) -> None:
+        key = f"{self.base_prefix}subagent:conversation:{session_id}"
+        await self.client.rpush(key, json.dumps(message))
+        await self.client.expire(key, self.ttl)
+
+    async def get_messages(self, session_id: str, limit: int = 20) -> list[Dict[str, Any]]:
+        key = f"{self.base_prefix}subagent:conversation:{session_id}"
+        data = await self.client.lrange(key, -limit, -1)
+        return [json.loads(m) for m in data]
+
     # --- TaskQueue Implementation ---
 
     async def enqueue(self, task_data: Dict[str, Any]) -> None:

@@ -7,6 +7,42 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = structlog.get_logger(__name__)
 
+from ..domain.enums import RedisNamespace, OrchestrationEngineType
+
+# --- 코드성 데이터 상수화 (Constants) ---
+
+class DefaultConfig:
+    # LLM & Redis
+    MODEL = "gpt-4o-mini"
+    REDIS_URL = "redis://localhost:6379/0"
+    
+    # Redis Prefixes
+    REDIS_PREFIXES = {
+        "task": "subagent:task",
+        "idempotency": "subagent:idempotency",
+        "events": "subagent:events",
+        "conversation": "subagent:conv",
+        "checkpoint": "subagent:ckpt"
+    }
+    
+    # A2A Scopes
+    A2A_SCOPES = ["chat", "weather", "supply-cost", "reservation", "sale-product"]
+    A2A_BASE_URL = "http://localhost:8082"
+    
+    # MCP Configuration
+    MCP_HOST = "http://10.225.18.50:8080"
+    MCP_SERVERS = {
+        "weather": ["getWeatherForecastByLocation", "getAlerts"],
+        "supply-cost": ["getSupplyCostInfo"],
+        "reservation": ["createReservation"],
+        "sale-product": ["createAutoCopySaleProducts", "getSaleProductDetails"]
+    }
+    
+    # Engine Default
+    ENGINE = OrchestrationEngineType.LANGGRAPH
+
+# --- 하위 설정 모델 정의 (Type Safety) ---
+
 class LlmProviderSettings(BaseModel):
     model: str
     temperature: float = 0.0
@@ -15,18 +51,16 @@ class LlmSettings(BaseModel):
     provider: str = "openai"
     providers: Dict[str, LlmProviderSettings] = {
         "google": LlmProviderSettings(model="gemini-1.5-flash"),
-        "openai": LlmProviderSettings(model="gpt-4o-mini")
+        "openai": LlmProviderSettings(model=DefaultConfig.MODEL)
     }
-
-from ..domain.enums import RedisNamespace
 
 class RedisPrefixSettings(BaseModel):
     global_prefix: str = RedisNamespace.GLOBAL_PREFIX.value
-    task: str = "subagent:task"
-    idempotency: str = "subagent:idempotency"
-    events: str = "subagent:events"
-    conversation: str = "subagent:conv"
-    checkpoint: str = "subagent:ckpt"
+    task: str = DefaultConfig.REDIS_PREFIXES["task"]
+    idempotency: str = DefaultConfig.REDIS_PREFIXES["idempotency"]
+    events: str = DefaultConfig.REDIS_PREFIXES["events"]
+    conversation: str = DefaultConfig.REDIS_PREFIXES["conversation"]
+    checkpoint: str = DefaultConfig.REDIS_PREFIXES["checkpoint"]
 
 class GraphSettings(BaseModel):
     max_tool_iterations: int = 4
@@ -46,22 +80,16 @@ class TraceSettings(BaseModel):
     propagate_fields: List[str] = ["trace_id", "request_id", "session_id"]
     use_supervisor_values_first: bool = True
 
-class ScopeSettings(BaseModel):
-    allowed_servers: List[str]
-    allowed_tools_by_server: Dict[str, List[str]]
-    default_model: str = "gemini-1.5-flash"
-
 class AgentSettings(BaseModel):
     graph: GraphSettings = GraphSettings()
     runtime: AgentRuntimeSettings = AgentRuntimeSettings()
     trace: TraceSettings = TraceSettings()
     redis_ttl: int = 1800
     redis_prefixes: RedisPrefixSettings = RedisPrefixSettings()
-    default_model: str = "gemini-1.5-flash"
-    scopes: Dict[str, ScopeSettings] = {}
+    default_model: str = DefaultConfig.MODEL
 
 class McpServerSettings(BaseModel):
-    host: str
+    host: str = DefaultConfig.MCP_HOST
     protocol: str = "streamable"
     endpoint: str = "/mcp"
     reuse_session: bool = True
@@ -71,8 +99,10 @@ class McpServerSettings(BaseModel):
 
 class A2aSettings(BaseModel):
     enabled: bool = True
-    public_base_url: str = "http://localhost:8082"
-    scopes: List[str] = ["chat", "weather", "supply-cost", "reservation", "sale-product"]
+    public_base_url: str = DefaultConfig.A2A_BASE_URL
+    scopes: List[str] = DefaultConfig.A2A_SCOPES
+
+# --- 메인 설정 클래스 ---
 
 class Settings(BaseSettings):
     app_name: str = "mcp-sub-agent"
@@ -81,35 +111,21 @@ class Settings(BaseSettings):
     
     # API Configuration
     api_prefix: str = "/api/v1"
+    orchestration_engine: OrchestrationEngineType = DefaultConfig.ENGINE
     
     # Redis Configuration
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = DefaultConfig.REDIS_URL
     
     # API Keys
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     
-    # Nested Settings (Document 21)
+    # Nested Settings
     llm: LlmSettings = LlmSettings()
     agent: AgentSettings = AgentSettings()
     a2a: A2aSettings = A2aSettings()
     mcp_servers: Dict[str, McpServerSettings] = {
-        "weather": McpServerSettings(
-            host="http://10.225.18.50:8080",
-            tools=["getWeatherForecastByLocation", "getAlerts"]
-        ),
-        "supply-cost": McpServerSettings(
-            host="http://10.225.18.50:8080",
-            tools=["getSupplyCostInfo"]
-        ),
-        "reservation": McpServerSettings(
-            host="http://10.225.18.50:8080",
-            tools=["createReservation"]
-        ),
-        "sale-product": McpServerSettings(
-            host="http://10.225.18.50:8080",
-            tools=["createAutoCopySaleProducts", "getSaleProductDetails"]
-        )
+        k: McpServerSettings(tools=v) for k, v in DefaultConfig.MCP_SERVERS.items()
     }
     
     model_config = SettingsConfigDict(
@@ -131,9 +147,8 @@ class Settings(BaseSettings):
                     with open(path, "r", encoding="utf-8") as f:
                         data = yaml.safe_load(f)
                         self._prompt_cache = data.get("prompts", {})
-                        logger.info("prompts_loaded_from_yaml", path=path)
-                except Exception as e:
-                    logger.error("failed_to_load_prompts", path=path, error=str(e))
+                except Exception:
+                    pass
         return self._prompt_cache
 
 settings = Settings()

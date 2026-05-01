@@ -50,9 +50,11 @@ class McpToolRegistry:
                     logger.info("mcp_discovery_success", server=server_name, count=len(discovered))
                     
                     for tool in discovered:
+                        tool_name = tool.get("name")
                         # Add server context to the tool info for later routing
                         tool["server_id"] = server_name
                         all_discovered_tools.append(tool)
+                        logger.info("mcp_tool_registered", server=server_name, tool=tool_name)
                 else:
                     logger.warn("mcp_no_tools_found", server=server_name, result=tools_result)
 
@@ -72,3 +74,16 @@ class McpToolRegistry:
             if tool.get("name") == tool_name:
                 return tool.get("server_id", "unknown")
         return "unknown"
+
+    def get_tool_schema(self, tool_name: str, server_name: str | None = None) -> Dict[str, Any]:
+        """
+        Returns the discovered MCP tool metadata (including inputSchema).
+        If server_name is provided, it must match.
+        """
+        for tool in self._tools:
+            if tool.get("name") != tool_name:
+                continue
+            if server_name and tool.get("server_id") != server_name:
+                continue
+            return tool
+        return {}

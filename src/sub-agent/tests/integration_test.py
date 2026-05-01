@@ -48,9 +48,12 @@ async def test_subagent_worker_execution(mock_redis):
     from typing import List, AsyncIterator
     
     # 1. Setup Dummy Services
+    from app.core.config import McpServerSettings
+    settings.mcp_servers["test_server"] = McpServerSettings(host="http://test")
+    
     class MockPlanning(Planner):
         async def plan(self, context: PlanningContext) -> List[ToolPlan]:
-            return [ToolPlan(tool_name="test_tool", arguments={}, reasoning="test")]
+            return [ToolPlan(tool_name="test_tool", server_name="test_server", arguments={}, reasoning="test")]
             
     class MockCompose(Composer):
         async def stream_compose(self, context: PlanningContext) -> AsyncIterator[AiChatChunk]:
@@ -62,10 +65,13 @@ async def test_subagent_worker_execution(mock_redis):
     from app.adapters.mcp.mcp_tool_registry import McpToolRegistry
     from app.adapters.mcp.mcp_infrastructure import McpTransportFactory, McpClientSessionManager
     
-    registry = McpToolRegistry()
+    transport_factory = McpTransportFactory()
+    registry = McpToolRegistry(transport_factory)
+    # Mock refresh_tools to avoid hitting real MCP servers during tests
+    async def mock_refresh(): return []
+    registry.refresh_tools = mock_refresh
     await registry.refresh_tools()
     
-    transport_factory = McpTransportFactory()
     session_manager = McpClientSessionManager(transport_factory)
     executor = McpExecutor(registry, session_manager)
     
@@ -73,15 +79,32 @@ async def test_subagent_worker_execution(mock_redis):
     store = RedisAdapter(settings.redis_url)
     persistence = AgentPersistence(store)
     
-    factory = WorkflowFactory(
-        planner=MockPlanning(),
-        executor=executor,
-        composer=MockCompose(),
-        publisher=store
-    )
+    # 2. Setup Orchestration Engine (Engine-Agnostic)
+    from app.domain.enums import OrchestrationEngineType
+    from app.adapters.orchestration.langgraph_factory import WorkflowFactory
+    from app.adapters.orchestration.burr_factory import BurrWorkflowFactory
+    from app.adapters.orchestration.langgraph_adapter import LangGraphAdapter
+    from app.adapters.orchestration.burr_adapter import BurrAdapter
+    
+    factory_args = {
+        "planner": MockPlanning(),
+        "executor": executor,
+        "composer": MockCompose(),
+        "publisher": store,
+        "registry": registry
+    }
+    
+    if settings.orchestration_engine == OrchestrationEngineType.BURR:
+        factory = BurrWorkflowFactory(**factory_args)
+        engine = BurrAdapter(factory)
+    else:
+
+        factory = WorkflowFactory(**factory_args)
+        engine = LangGraphAdapter(factory)
     
     agent_executor = AgentExecutor(
-        factory=factory,
+
+        engine=engine,
         persistence=persistence,
         publisher=store
     )
