@@ -23,6 +23,14 @@ async def mock_redis(monkeypatch):
     from app.main import app
     app.dependency_overrides[get_redis] = lambda: fake_redis
     
+    # Mock Active Agents for Drift Policy
+    from app.adapters.llm.llm_planning_service import LlmPlanningService
+    monkeypatch.setattr(
+        LlmPlanningService, 
+        "get_active_agent_keys", 
+        lambda self: ["sub-agent", "other-agent"]
+    )
+    
     yield fake_redis
     await fake_redis.flushall()
     await fake_redis.close()

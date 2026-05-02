@@ -84,15 +84,16 @@ async def get_persistence_facade(
     factory = PersistenceStrategyFactory(coordinator, event_service)
     return SupervisorExecutionPersistenceService(factory)
 
-async def get_read_facade(
-    task_store: RedisTaskStore = Depends(get_task_store),
-    snapshot_store: RedisExecutionSnapshotStore = Depends(get_snapshot_store)
-) -> SupervisorReadFacade:
-    factory = ReadQueryFactory(task_store, snapshot_store)
-    return SupervisorReadFacade(factory)
-
 async def get_planning_service() -> LlmPlanningService:
     return LlmPlanningService()
+
+async def get_read_facade(
+    task_store: RedisTaskStore = Depends(get_task_store),
+    snapshot_store: RedisExecutionSnapshotStore = Depends(get_snapshot_store),
+    planning_service: LlmPlanningService = Depends(get_planning_service)
+) -> SupervisorReadFacade:
+    factory = ReadQueryFactory(task_store, snapshot_store, planning_service)
+    return SupervisorReadFacade(factory)
 
 async def get_hitl_gate_service(
     planning_service: LlmPlanningService = Depends(get_planning_service),

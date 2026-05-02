@@ -8,6 +8,16 @@ class PlanningService(Protocol):
     async def plan(self, user_input: str, context: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
         ...
 
+class AgentRegistry(Protocol):
+    """
+    Port for discovering and verifying sub-agents.
+    """
+    def get_active_agent_keys(self) -> List[str]:
+        ...
+    
+    def is_agent_blocked(self, agent_key: str) -> bool:
+        ...
+
 class ResponseComposeService(Protocol):
     """
     Port for the Response Compose Service.

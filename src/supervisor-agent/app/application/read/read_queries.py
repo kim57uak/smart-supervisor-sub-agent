@@ -3,6 +3,7 @@ from datetime import datetime
 from ...domain.models import SnapshotVerificationResult, ReviewedExecutionSnapshot
 from ...domain.enums import ReasonCode, TaskState
 from ...ports.store_ports import TaskStore, ExecutionSnapshotStore
+from ...ports.llm_ports import AgentRegistry
 from ...common.utils.canonical_json import PlanHashCalculator
 import structlog
 
@@ -19,9 +20,10 @@ class TaskReadModelQuery:
 
 
 class SnapshotVerificationQuery:
-    def __init__(self, task_store: TaskStore, snapshot_store: ExecutionSnapshotStore):
+    def __init__(self, task_store: TaskStore, snapshot_store: ExecutionSnapshotStore, agent_registry: Optional[AgentRegistry] = None):
         self.task_store = task_store
         self.snapshot_store = snapshot_store
+        self.agent_registry = agent_registry
 
     async def execute(self, task_id: str, **kwargs) -> SnapshotVerificationResult:
         request_params = kwargs.get("request_params", {})
@@ -113,14 +115,15 @@ class SnapshotVerificationQuery:
         security_policy_allowed = True
         endpoint_available = True
         
-        blocked_agents = ["blocked_agent_1", "retired_agent"] # Mock blocked list
-        
         for step in snapshot.frozen_plan.routing_queue:
             if not step.agent_key or step.agent_key == "unknown":
                 route_allowed = False
                 logger.warning("audit_drift_blocked", task_id=task_id, reason="invalid_agent_key", agent=step.agent_key)
                 break
-            if step.agent_key in blocked_agents:
+            
+            # Rationale (Why): Using the dynamic AgentRegistry (Port) to verify if the agent 
+            # is still active and discovered. This replaces the previous mock list.
+            if self.agent_registry and self.agent_registry.is_agent_blocked(step.agent_key):
                 route_allowed = False
                 logger.warning("audit_drift_blocked", task_id=task_id, reason="agent_retired_or_blocked", agent=step.agent_key)
                 break

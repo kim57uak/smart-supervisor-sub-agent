@@ -243,6 +243,30 @@ class LlmPlanningService(PlanningService):
         except Exception:
             return None
 
+    def get_active_agent_keys(self) -> List[str]:
+        """Returns the keys of currently discovered agents."""
+        return list(LlmPlanningService._agent_card_cache.keys())
+
+    def is_agent_blocked(self, agent_key: str) -> bool:
+        """
+        Verifies if an agent is blocked or no longer active.
+        Logic: If agent is not in the discovered cache, consider it blocked/inactive.
+        """
+        # Rationale (Why): Implementing drift policy check by verifying agent existence 
+        # in the real-time card cache.
+        active_keys = self.get_active_agent_keys()
+        
+        # Exact match or normalized check
+        if agent_key in active_keys:
+            return False
+            
+        # Case-insensitive fuzzy match check
+        for active in active_keys:
+            if active.lower() == agent_key.lower():
+                return False
+                
+        return True
+
     def _build_direct_answer_plan(self, exec_config: dict, handoff_config: dict, reasoning: str) -> Dict[str, Any]:
         return {
             "routing_queue": [],
