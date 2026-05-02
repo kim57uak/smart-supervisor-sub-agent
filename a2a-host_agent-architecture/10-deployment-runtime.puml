@@ -8,15 +8,15 @@ skinparam componentStyle rectangle
 node "API Runtime (FastAPI)" #E8F8F5 {
   [main.py / uvicorn] as API
   [supervisor_a2a_endpoint] as Endpoint
-  [supervisor_agent_service] as AgentService
-  [supervisor_task_event_stream_service] as EventService
+  [SupervisorAgentService] as AgentService
+  [TaskEventStreamService] as EventService
 }
 
 node "Background Worker Runtime" #F9E79F {
   [worker.py / main] as Worker
-  [supervisor_graph_execution_service] as GraphExecution
-  [supervisor_progress_publisher] as Publisher
-  [supervisor_response_compose_service] as Composer
+  [SupervisorGraphExecutionService] as GraphExecution
+  [SupervisorProgressPublisher] as Publisher
+  [LlmSupervisorResponseComposeService] as Composer
 }
 
 database "Redis Infra" #FDF2E9 {
@@ -40,7 +40,7 @@ Endpoint --> EventService : SSE Subscription
 AgentService --> Idempotency : check_and_reserve (SET NX)
 AgentService --> TaskQueue : LPUSH (Task Submission)
 
-Worker --> TaskQueue : BRPOP
+Worker --> TaskQueue : BRPOPLPUSH (Reliable Queue)
 Worker --> GraphExecution : execute_plan
 GraphExecution --> Publisher : publish events
 Publisher --> EventStream : XADD

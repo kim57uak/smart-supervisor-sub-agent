@@ -11,21 +11,22 @@ actor "Direct User" as User
 rectangle "mcp-orchestrator (Sub-agent)" {
   package "API Runtime" #E8F8F5 {
     [chat.router] as api_agent
-    [a2a_router] as api_a2a
+    [discovery.router] as api_a2a
     [AgentChatUseCase] as usecase
-    [AgentReader] as reader
+    [AgentReadFacade] as reader
   }
 
   package "Worker Runtime" #F9E79F {
     [WorkerExecutionService] as worker
     [AgentExecutor] as executor
-    [RedisAdapter] as adapter
+    [AgentProgressPublisher] as publisher
   }
 
-  [LlmPlanner] as planner
-  [McpExecutor] as tool_exec
-  [LlmComposer] as composer
+  [LlmPlanningService] as planner
+  [McpToolExecutor] as tool_exec
+  [LlmResponseComposeService] as composer
   [AgentPersistence] as persistence
+  [McpToolRegistry] as registry
 }
 
 database "Redis" as Redis {
@@ -51,9 +52,10 @@ executor --> planner
 executor --> tool_exec
 executor --> composer
 executor --> persistence
-executor --> adapter : publish progress
+executor --> publisher : publish progress
+executor --> registry : get schemas
 
-adapter --> event_stream : publish progress
+publisher --> event_stream : publish progress
 persistence --> session_store : atomic save
 
 planner --> LLM

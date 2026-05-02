@@ -8,77 +8,76 @@ skinparam packageStyle rectangle
 package "src/app" {
   package "api" {
     class supervisor_a2a_endpoint
-    class supervisor_a2a_request_validator
   }
 
   package "application" {
     package "execution" {
-      class supervisor_agent_service
-      class task_queue_service
-      class worker_execution_service
-      class supervisor_graph_execution_service
-      class supervisor_progress_publisher
-      class supervisor_exception_translator
+      class SupervisorAgentService
+      class HitlGateService
+      class TaskQueueService
+      class WorkerExecutionService
+      class SupervisorGraphExecutionService
+      class SupervisorProgressPublisher
+      class SupervisorExceptionTranslator
     }
     package "persistence" {
-      class supervisor_execution_persistence_service
-      class supervisor_persistence_strategy_factory
-      class execution_consistency_coordinator
-      class task_event_stream_service
+      class SupervisorExecutionPersistenceService
+      class SupervisorPersistenceStrategyFactory
+      class ExecutionConsistencyCoordinator
+      class TaskEventStreamService
     }
     package "read" {
-      class supervisor_read_facade
-      class supervisor_read_query_factory
-      class task_read_model_query
-      class snapshot_verification_query
+      class SupervisorReadFacade
+      class SupervisorReadQueryFactory
+      class SnapshotVerificationQuery
     }
-    class hitl_gate_service
   }
 
   package "services" {
-    class fact_governance_service
-    class prompt_injection_guard
-    class handoff_policy_service
+    class FactGovernanceService
+    class PromptInjectionGuard
+    class HandoffPolicyService
+    class SupervisorA2aRequestValidator
   }
 
   package "adapters" {
     package "llm" {
-      class llm_planning_service
-      class llm_compose_service
+      class LlmPlanningService
+      class LlmComposeService
     }
     package "orchestration" {
-      class langgraph_factory
-      class handoff_policy
+      class LangGraphFactory
+      class HandoffPolicy
     }
     package "integration" {
-      class default_a2a_invocation
+      class DefaultA2AInvocation
     }
     package "store" {
-      class redis_stores
+      class RedisStores
     }
   }
 
   package "domain" {
-    class models
-    class enums
-    class exceptions
+    class Models
+    class Enums
+    class Exceptions
   }
 
   package "common" {
-    class canonical_json
+    class CanonicalJson
   }
 }
 
 note bottom
 Rules
 - api endpoint는 JSON-RPC/SSE 입구와 params 검증만 담당한다
-- supervisor_agent_service는 use case orchestration만 담당한다
-- task_queue_service는 Redis 기반 Producer-Consumer 큐잉을 담당한다
-- worker_execution_service는 백그라운드 워커의 실행 제어를 담당한다
-- hitl_gate_service는 planner의 `review_required` 분기와 review lifecycle을 담당한다
-- prompt_injection_guard는 입력 보안 검증을 담당한다
-- fact_governance_service는 Swarm State의 무결성 관리를 담당한다
-- execution_consistency_coordinator는 Redis CAS 기반 상태 전이를 캡슐화한다
-- snapshot_verification_query는 승인 시점의 무결성 및 드리프트 검증을 담당한다
+- SupervisorAgentService는 use case orchestration만 담당한다
+- TaskQueueService는 Redis 기반 Producer-Consumer 큐잉을 담당한다
+- WorkerExecutionService는 백그라운드 워커의 실행 제어를 담당한다
+- HitlGateService는 planner의 `review_required` 분기와 review lifecycle을 담당한다
+- PromptInjectionGuard는 입력 보안 검증을 담당한다
+- FactGovernanceService는 Swarm State의 무결성 관리를 담당한다
+- ExecutionConsistencyCoordinator는 Redis CAS 기반 상태 전이를 캡슐화한다
+- SnapshotVerificationQuery는 승인 시점의 무결성 및 드리프트 검증을 담당한다
 end note
 @enduml

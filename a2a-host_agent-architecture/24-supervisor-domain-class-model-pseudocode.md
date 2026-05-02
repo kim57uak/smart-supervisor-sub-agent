@@ -1,6 +1,6 @@
 # 24. Supervisor Domain Class Model Reference
 
-Updated: 2026-04-28 (Implementation Aligned)
+Updated: 2026-05-01 (Implementation Aligned)
 
 ## Core Execution Models
 
@@ -18,6 +18,7 @@ class FrozenRoutingStep(BaseModel):
     arguments: Dict[str, Any]
     handoff_depth: int
     parent_agent_key: Optional[str] = None
+    pre_hitl_a2ui: Optional[str] = None
 
 class ExecutionConstraintSet(BaseModel):
     max_concurrency: int = 1
@@ -40,6 +41,7 @@ class FrozenExecutionPlan(BaseModel):
     routing_queue: List[FrozenRoutingStep]
     planner_metadata: Dict[str, Any]
     execution_constraints: ExecutionConstraintSet
+    review_reason: Optional[str] = None
 ```
 
 ## Security & Snapshot Models
@@ -58,6 +60,7 @@ class ReviewedExecutionSnapshot(BaseModel):
     expires_at: datetime
     sanitized_input: Dict[str, Any]
     frozen_plan: FrozenExecutionPlan
+    review_reason: Optional[str] = None
 
 class SnapshotVerificationResult(BaseModel):
     signature_matched: bool
@@ -80,4 +83,5 @@ class SupervisorTaskEvent(BaseModel):
     event_type: str  # progress, reasoning, chunk, a2ui, done, error
     created_at: datetime
     payload: Dict[str, Any]
+    is_replayable: bool = True
 ```

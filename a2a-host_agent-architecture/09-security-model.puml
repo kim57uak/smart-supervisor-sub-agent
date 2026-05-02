@@ -7,7 +7,8 @@ skinparam componentStyle rectangle
 
 rectangle "Input Guard" {
   [supervisor_a2a_endpoint] as Controller
-  [supervisor_a2a_request_validator] as Validator
+  [SupervisorA2aRequestValidator] as Validator
+  [PromptInjectionGuard] as Guard
 }
 
 rectangle "Audit & Integrity Guard" {
@@ -26,6 +27,7 @@ rectangle "State Integrity" {
 }
 
 Controller --> Validator : validate_request
+Controller --> Guard : sanitize input
 Validator --> Auditor : session_id / task_id / request_params
 
 Auditor --> HashGen : recalculate request_hash\ncompare with frozen_plan_hash
@@ -38,7 +40,7 @@ Invoker --> Auditor : implicit allowlist via routing config
 Consistency --> CAS : atomic state transition\nversion increment
 
 note right of Auditor
-Advanced Integrity Checks (Doc 31):
+Advanced Integrity Checks:
 - request_hash mismatch -> tamper detected
 - frozen_plan_hash mismatch -> drift detected
 - resume_token mismatch -> invalid resume

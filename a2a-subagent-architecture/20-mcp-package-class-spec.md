@@ -1,48 +1,48 @@
-# 20. MCP Package / Class Specification
+# 20. Sub-Agent Package / Class Specification
 
-**Updated**: 2026-04-30 (Real-time Discovery & Handshake Refinement)  
-**Source baseline**: `src/sub-agent/app/adapters/mcp`
+Updated: 2026-05-01 (Implementation sync)
+Source baseline: `src/sub-agent/app`
 
-## 1. Target Overview
+## Core Modules / Components
 
-본 문서는 `sub-agent`의 핵심 MCP(Model Context Protocol) 연동 계층을 정의한다. Java 기반 Spring AI MCP 서버와의 안정적인 연동을 위해 **Real-time Discovery**, **Stateful Session**, 및 **Streamable HTTP** 프로토콜 준수를 핵심으로 한다.
+### API Tier
+- **`a2a/discovery.py`**: A2A(JSON-RPC) 요청 처리 및 에이전트 발견 엔드포인트.
+- **`agent/chat.py`**: 사용자 직접 채팅 및 스트리밍 응답 엔드포인트.
+- **`support/stream.py`**: Redis Stream 기반 SSE 구독 처리.
 
----
+### Application Tier (Execution)
+- **`AgentChatUseCase`**: API 진입점 로직. 멱등성 체크, 초기 상태 저장 및 워커 큐 적재 담당.
+- **`AgentExecutor`**: 워커 내부의 실행 오케스트레이터. 엔진 호출 및 최종 상태 전이 관리.
+- **`WorkerExecutionService`**: Redis Queue 기반의 백그라운드 워커 루프.
+- **`AgentProgressPublisher`**: 실행 단계별 진행 이벤트를 Redis Stream으로 발행.
 
-## 2. Component Specifications
+### Application Tier (Persistence & Read)
+- **`AgentPersistence`**: 상태 변경 시나리오별 영속성 전략 Facade.
+- **`AgentReadFacade`**: 태스크 상태 및 히스토리 조회 진입점.
+- **`ExecutionConsistencyCoordinator`**: 원자적 상태 변경 및 무결성 제어 (준비 중).
 
-### 2.1 McpTransport (Strategy Pattern)
-- **역할**: 다양한 MCP 서버 기술 스펙에 대응하기 위한 추상 전송 계층 인터페이스.
-- **추상 메서드**: `call(method, params)`, `notify(method, params)`.
+### Adapters (Orchestration & Tools)
+- **`LangGraphStateGraphFactory`**: LangGraph 기반 노드 및 엣지 정의.
+- **`LangGraphAdapter`**: `OrchestrationEngine` 인터페이스의 LangGraph 구현체.
+- **`McpToolRegistry`**: 로컬 설정 및 MCP 서버로부터 사용 가능한 도구 목록 관리.
+- **`McpToolExecutor`**: MCP 서버와 통신하여 실제 도구 실행 수행.
 
-### 2.2 SpringAiMcpTransport (Concrete Strategy)
-- **역할**: Spring AI MCP (Streamable HTTP) 규약을 준수하는 구체적 전략 클래스.
-- **특화 로직**: `Mcp-Session-Id` 관리 및 SSE(Server-Sent Events) 응답 파싱.
+### Adapters (LLM & Stores)
+- **`LlmPlanningService`**: LLM을 이용한 도구 실행 계획 수립.
+- **`LlmResponseComposeService`**: LLM을 이용한 최종 응답 합성 및 스트리밍.
+- **`RedisStores`**: Redis 기반의 Task, Message, Session 저장소 구현체.
 
-### 2.3 McpTransportFactory
-- **역할**: 설정 기반으로 적절한 `McpTransport` 구현체를 생성하고 `httpx.AsyncClient`를 공유 관리.
+## Key Models (domain/models.py)
 
-### 2.4 McpToolRegistry (Discovery Layer)
-- **역할**: 설정된 모든 MCP 서버로부터 실시간 도구 목록을 수집.
-- **Discovery Sequence**: `initialize` -> `notifications/initialized` -> `tools/list`.
-- **기능**: 도구 스키마 제공 및 도구 이름별 서버 매핑(`get_tool_server`).
+- **`AgentTask`**: 전체 태스크 실행 컨텍스트 및 상태 정보.
+- **`ToolPlan`**: LLM이 결정한 도구 실행 상세 계획.
+- **`AgentExecutionResult`**: 실행 완료 후의 최종 답변 및 메타데이터.
+- **`PlanningContext`**: 플래닝 및 합성에 필요한 런타임 문맥.
 
-### 2.5 McpClientSessionManager
-- **역할**: 실행 시점에 필요한 트랜스포트 인스턴스의 라이프사이클 및 세션 캐싱 관리.
+## Dependency Policy (Actual)
 
-### 2.6 McpExecutor (Execution Layer)
-- **역할**: LLM의 도구 호출 계획을 실제 MCP 요청으로 변환하여 실행.
-
----
-
-## 3. Communication Protocol (Contracts)
-
-### 3.1 Handshake Sequence (Strict)
-1. **Initialize**: `protocolVersion`, `clientInfo`를 포함하여 `initialize` 메서드 호출.
-2. **Session Capture**: 응답 헤더의 `Mcp-Session-Id`를 획득.
-3. **Initialized Notification**: `notifications/initialized` 알림을 전송하여 활성화.
-4. **Operations**: 이후 모든 요청에 세션 ID 포함.
-
-### 3.2 Error Handling
-- **Handshake Failure**: 초기화 실패 시 해당 서버를 제외하고 로깅.
-- **SSE Parsing**: `data:` 접두사가 없는 경우에도 유연하게 JSON을 추출하도록 폴백 로직 적용.
+- `api -> application/execution -> ports` (Inversion)
+- `application/execution -> application/persistence/read facades`
+- `adapters -> ports` (Implementation)
+- `worker.py -> application/execution`
+- 모든 레이어는 `domain` 및 `schemas`를 공유함.

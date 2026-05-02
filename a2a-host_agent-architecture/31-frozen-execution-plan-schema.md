@@ -1,6 +1,6 @@
 # 31. FrozenExecutionPlan Schema
 
-Updated: 2026-04-30 (Final Implementation)
+Updated: 2026-05-01 (Final Implementation)
 
 ## Required Data Models
 
@@ -18,6 +18,7 @@ class FrozenRoutingStep(BaseModel):
     arguments: Dict[str, Any]
     handoff_depth: int
     parent_agent_key: Optional[str] = None
+    pre_hitl_a2ui: Optional[str] = None
 
 class ExecutionConstraintSet(BaseModel):
     max_concurrency: int = 1
@@ -42,6 +43,7 @@ class FrozenExecutionPlan(BaseModel):
     routing_queue: List[FrozenRoutingStep]
     planner_metadata: Dict[str, Any] = {}
     execution_constraints: ExecutionConstraintSet
+    review_reason: Optional[str] = None
 
 class ReviewedExecutionSnapshot(BaseModel):
     task_id: str
@@ -56,12 +58,13 @@ class ReviewedExecutionSnapshot(BaseModel):
     expires_at: datetime
     sanitized_input: Dict[str, Any]
     frozen_plan: FrozenExecutionPlan
+    review_reason: Optional[str] = None
 ```
 
 ## Hash Integrity Rules
 
-1. **Deterministic Serialization**: `CanonicalJsonSerializer`를 사용하여 키 순서 정렬 및 공백 제거(`separators=(',', ':')`) 후 직렬화한다.
-2. **Input Hash**: `session_id`, `request_id`, `execution_mode`, `message`, `normalized_business_params` 등을 포함하여 요청 위변조를 감지한다.
+1. **Deterministic Serialization**: `PlanHashCalculator` 및 `CanonicalJsonSerializer`를 사용하여 키 순서 정렬 및 공백 제거 후 직렬화한다.
+2. **Input Hash**: `session_id`, `request_id`, `message` 등을 포함하여 요청 위변조를 감지한다.
 3. **Plan Hash**: `routing_queue`, `execution_constraints`, `planner_metadata`를 포함하여 계획 위변조를 감지한다.
 
 ## Verification Protocol

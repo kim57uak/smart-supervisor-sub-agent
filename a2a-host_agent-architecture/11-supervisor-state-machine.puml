@@ -56,7 +56,7 @@ COMPLETED --> [*]
 note right of DIRECT_ANSWER_CHECKED
 is_direct path:
 - Skips downstream graph
-- Directly calls Compose Service
+- Directly calls LlmComposeService
 - Efficient for simple greetings/answers
 end note
 
@@ -70,7 +70,7 @@ LangGraph Node Mapping:
 end note
 
 note bottom
-The runtime starts only after worker dequeues from task_queue.
+The runtime starts only after worker dequeues from TaskQueueService.
 Approved snapshot resume skips planning and enters SELECT_NODE with frozen queue.
 end note
 @enduml

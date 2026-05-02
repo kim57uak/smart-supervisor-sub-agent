@@ -1,6 +1,6 @@
 # 17. Supervisor Package / Class Specification
 
-Updated: 2026-04-30 (Refined implementation sync)
+Updated: 2026-05-01 (Implementation sync)
 Source baseline: `src/app`
 
 ## Target Baseline
@@ -58,7 +58,7 @@ src/app
 - **`FactGovernanceService`**: Swarm 상태(Shared Facts)의 무결성 및 업데이트 규칙 관리.
 
 ### Orchestration & Integration
-- **`LangGraphSupervisorStateGraphFactory`**: LangGraph 노드 및 엣지 정의.
+- **`LangGraphStateGraphFactory`**: LangGraph 노드 및 엣지 정의.
 - **`DefaultA2AInvocationService`**: 서킷 브레이커가 포함된 표준 A2A 통신.
 - **`LlmSupervisorResponseComposeService`**: 지능형 응답 합성 및 A2UI 렌더링 지시.
 
@@ -69,6 +69,7 @@ src/app
 - **`FrozenRoutingStep`**: 순서(`order`)가 포함된 라우팅 단계.
 - **`ExecutionConstraintSet`**: 동시성, 타임아웃 등 실행 제약 조건.
 - **`SnapshotVerificationResult`**: 무결성 검증 결과 상세.
+- **`SupervisorTaskEvent`**: Redis Stream에 저장되는 작업 이벤트.
 
 ## Dependency Policy (Actual)
 

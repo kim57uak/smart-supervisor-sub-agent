@@ -1,83 +1,52 @@
 # 21. A2A Supervisor Settings Structure
 
-Updated: 2026-04-28 (Implementation Aligned)
-Aligned with: `src/app/config/supervisor.yml`
+Updated: 2026-05-01 (Implementation Aligned)
+Aligned with: `src/app/core/config.py` and `src/app/config/*.yml`
 
 ## Application Configuration Rules
 
-- **Resource Separation**: `app.yml` (공통 인프라), `supervisor.yml` (런타임 정책), `prompts.yml` (프롬프트 리소스)로 역할을 분리한다.
-- **Environment Isolation**: 하드코딩된 endpoint나 API key를 지양하고 설정 파일 또는 환경변수를 사용한다.
+- **Resource Separation**: `config.py` (Core Pydantic settings), `prompts.yml` (LLM instructions), `hitl_messages.yml` (User-facing review reasons).
+- **Environment Isolation**: Uses `pydantic-settings` with `SUPERVISOR_` prefix for infrastructure (Redis URL, API Keys).
+- **Hardcoding Elimination**: Core contracts like method names and routing defaults are defined in `DefaultConfig` but overridable via env/YAML.
 
-## Actual Structure Reference
+## Actual Structure Reference (Method Allowlist)
+
+Derived from `src/app/core/config.py`:
+
+```python
+# Standardized API methods supported by the Supervisor
+ALLOWLIST = [
+    "message/send", "SendMessage",
+    "message/stream", "SendStreamingMessage",
+    "tasks/get", "GetTask",
+    "tasks/list", "ListTasks",
+    "tasks/cancel", "CancelTask",
+    "tasks/events", "TaskEvents",
+    "tasks/review/get", 
+    "tasks/review/decide",
+    "agent/card", 
+    "session/clear", "ClearSession"
+]
+```
+
+## Routing Table (Default)
 
 ```yaml
-host:
-  a2a:
-    # API 진입점 허용 메서드 목록
-    method-allowlist:
-      - message/send
-      - SendMessage
-      - message/stream
-      - SendStreamingMessage
-      - tasks/get
-      - GetTask
-      - tasks/list
-      - ListTasks
-      - tasks/cancel
-      - CancelTask
-      - tasks/events
-      - TaskEvents
-      - tasks/review/get
-      - tasks/review/decide
-      - agent/card
-
-    # Downstream 에이전트 라우팅 테이블
-    routing:
-      product:
-        endpoint: http://localhost:8082/a2a/product
-        method: message/send
-        timeout-ms: 120000
-      reservation:
-        endpoint: http://localhost:8082/a2a/reservation
-        method: message/send
-        timeout-ms: 120000
-
-    # 재시도 및 탄력성 정책
-    retry:
-      max-retries: 0
-      initial-backoff-ms: 500
-      max-backoff-ms: 3000
-    circuit-breaker:
-      enabled: true
-      failure-threshold: 2
-      open-duration-ms: 3000
-
-    # 오케스트레이션 제약 조건
-    execution:
-      max-concurrency: 2
-    history:
-      max-turns: 5
-    a2ui:
-      enabled: true
-    handoff:
-      enabled: true
-      max-hops: 3
-      block-same-agent-within-steps: 2
-      allow-methods:
-        - message/send
-        - SendMessage
-        - message/stream
-        - SendStreamingMessage
-    
-    # 스트리밍 및 이벤트 유지 정책
-    stream:
-      timeout-ms: 120000
+routing:
+  product:
+    endpoint: http://127.0.0.1:8082/a2a/product
+  reservation:
+    endpoint: http://127.0.0.1:8082/a2a/reservation
+  supply-cost:
+    endpoint: http://127.0.0.1:8082/a2a/supply-cost
+  weather:
+    endpoint: http://127.0.0.1:8082/a2a/weather
 ```
 
 ## Policy Rules
 
-1. **Downstream Onboarding**: 신규 에이전트 추가 시 `host.a2a.routing.{agent_key}` 섹션을 추가하는 것만으로 런타임에 즉시 반영된다.
-2. **Circuit Breaker**: 에이전트별 연속 실패가 `failure-threshold`를 초과하면 자동으로 차단(Open)되며, `open-duration-ms` 이후 다시 시도한다.
-3. **Idempotency Key**: 모든 Redis 키는 `supervisor:session:{id}` 접두사를 사용하여 멀티 테넌시 및 데이터 격리를 보장한다.
-4. **Handoff Guard**: `allow-methods`에 명시되지 않은 메서드로의 핸드오프 요청은 보안 정책상 거부된다.
-5. **Stream Integrity**: `stream.timeout-ms`는 클라이언트 구독 유지 시간의 상한을 정의한다.
+1. **Downstream Onboarding**: 신규 에이전트 추가 시 `A2aSettings.routing` 딕셔너리에 추가하거나 `SUPERVISOR_A2A__ROUTING__<AGENT>__ENDPOINT` 환경변수를 통해 동적 추가 가능.
+2. **Circuit Breaker**: `DefaultA2AInvocationService`에서 관리하며, 실패 임계치 초과 시 즉시 차단됨.
+3. **Idempotency Key**: 모든 Redis 키는 `package:` 접두사와 `supervisor:idempotency` 네임스페이스를 사용하여 격리됨.
+4. **Prompt Management**: `app/config/prompts.yml`에서 시스템 프롬프트를 중앙 관리하며, 런타임에 리로드 없이 프로퍼티로 접근 가능.
+5. **HITL Messages**: `app/config/hitl_messages.yml`에서 리뷰 사유별 한국어 메시지를 관리하여 UI 응답 품질을 유지함.

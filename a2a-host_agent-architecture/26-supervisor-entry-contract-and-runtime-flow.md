@@ -11,15 +11,15 @@ Updated: 2026-04-28 (Implementation Refined)
 ## Canonical Runtime Flow (Decoupled Worker)
 
 ### 1. Execution Request (SendMessage)
-1. **Admission**: `consistency_coordinator`가 `request_id` 기반 멱등성을 체크하고 `task_id`를 선점한다. 중복 요청 시 기존 태스크 정보를 즉시 반환한다.
+1. **Admission**: `ExecutionConsistencyCoordinator`가 `request_id` 기반 멱등성을 체크하고 `task_id`를 선점한다. 중복 요청 시 기존 태스크 정보를 즉시 반환한다.
 2. **Sanitization**: `PromptInjectionGuard`가 입력 텍스트의 유해 패턴을 필터링한다.
-3. **HITL Evaluation**: `hitl_gate_service`가 플래닝을 수행하고 리뷰 필요 여부를 판단한다.
-4. **Enqueuing**: 리뷰 불필요 시 `task_queue_service`를 통해 백그라운드 워커로 작업을 이관하고 `STREAMING` 응답을 반환한다.
+3. **HITL Evaluation**: `HitlGateService`가 플래닝을 수행하고 리뷰 필요 여부를 판단한다.
+4. **Enqueuing**: 리뷰 불필요 시 `TaskQueueService`를 통해 백그라운드 워커로 작업을 이관하고 `STREAMING` 응답을 반환한다.
 5. **Execution (Worker)**: 워커가 그래프를 실행하고 진행 상태를 Redis Stream에 발행한다.
 
 ### 2. Review Decision
 1. **Verification**: `SnapshotVerificationQuery`가 스냅샷의 해시, 소유권, 버전, 드리프트 여부를 전수 검증한다.
-2. **Approval**: 승인 시 `consistency_coordinator`가 상태를 원자적으로 `RUNNING`으로 전이시키고 워커 큐에 적재한다.
+2. **Approval**: 승인 시 `ExecutionConsistencyCoordinator`가 상태를 원자적으로 `RUNNING`으로 전이시키고 워커 큐에 적재한다.
 3. **Resume**: 클라이언트는 승인 Ack 수신 후 `/stream` 엔드포인트에서 이벤트를 다시 구독한다.
 
 ## Task Event Subscription Rules

@@ -1,89 +1,29 @@
 @startuml
-title 04. Supervisor Host Agent Domain Model (Python target architecture, 2026-04-25)
+title 04. Supervisor Host Agent Domain Model (Python target architecture, 2026-05-01)
 
 skinparam shadowing false
 skinparam classAttributeIconSize 0
 
-class SupervisorAgentRequest {
-  +session_id: str
-  +message: String
-  +model: String
-}
+' --- Core Domain Entities (Pydantic Models) ---
 
-class SupervisorExecutionRequest {
-  +session_id: str
-  +message: String
-  +model: String
-}
-
-class SupervisorPlanningContext {
-  +task_id: str
-  +session_id: str
-  +user_message: str
-  +model: String
-  +history: List<String>
-  +routing_plans: List<RoutingPlan>
-  +results: List<DownstreamCallResult>
-  +routingIndex: int
-  +swarm_state_version: int
-  +swarm_shared_facts: Map[str, object]
-  +current_node: str
-  +checkpoint_id: str
-}
-
-class RoutingPlan {
+class FrozenRoutingStep {
+  +order: int
   +agent_key: str
-  +method: String
-  +reason: String
-  +priority: int
-  +arguments: Map<String, Object>
+  +method: str
+  +source_type: str
+  +reason: str
+  +arguments: dict
+  +handoff_depth: int
+  +parent_agent_key: str
+  +pre_hitl_a2ui: str
 }
 
-class DownstreamCallResult {
-  +agent_key: str
-  +task_id: str
-  +status: String
-  +payload: dict
-  +error_code: String
-  +error_message: String
-  +handoff_requested: bool
-  +next_agent_key: str
-  +handoff_method: str
-  +handoff_reason: str
-  +handoff_arguments: Map[str, object]
-}
-
-class HitlPolicyResult {
-  +required: boolean
-  +policyId: String
-  +reason: String
-}
-
-class HitlReviewTicket {
-  +task_id: str
-  +session_id: str
-  +message: String
-  +model: String
-  +policy_id: str
-  +policy_reason: str
-  +status: HitlReviewStatus
-  +decision_reason: str
-  +decision_id: str
-}
-
-class ReviewedExecutionSnapshot {
-  +task_id: str
-  +session_id: str
-  +request_id: str
-  +trace_id: str
-  +sanitized_input: Map[str, object]
-  +request_hash: str
-  +frozen_plan_hash: str
-  +resume_token: str
-  +state_version: int
-  +created_at: datetime
-  +expires_at: datetime
-  +frozen_plan: FrozenExecutionPlan
+class ExecutionConstraintSet {
+  +max_concurrency: int
+  +stream_allowed: bool
+  +invoke_timeout_ms: int
+  +max_handoff_depth: int
+  +a2ui_allowed: bool
 }
 
 class FrozenExecutionPlan {
@@ -95,88 +35,76 @@ class FrozenExecutionPlan {
   +schema_version: int
   +canonicalization_version: int
   +execution_mode: ExecutionMode
-  +resume_state: ResumeState
+  +resume_state: str
   +request_hash: str
   +frozen_plan_hash: str
   +created_at: datetime
   +expires_at: datetime
-  +routing_queue: List<RoutingPlan>
-  +planner_metadata: Map[str, object]
+  +routing_queue: List<FrozenRoutingStep>
+  +planner_metadata: dict
   +execution_constraints: ExecutionConstraintSet
+  +review_reason: str
 }
 
-class ExecutionConstraintSet {
-  +maxConcurrency: int
-  +streamAllowed: boolean
-  +invokeTimeout: Duration
-  +maxHandoffDepth: int
-  +a2uiAllowed: boolean
-}
-
-class SwarmState {
+class ReviewedExecutionSnapshot {
   +task_id: str
   +session_id: str
+  +request_id: str
+  +trace_id: str
   +state_version: int
-  +updated_at: datetime
-  +shared_facts: Map[str, object]
-  +event_log: List[Map[str, object]]
+  +resume_token: str
+  +request_hash: str
+  +frozen_plan_hash: str
+  +created_at: datetime
+  +expires_at: datetime
+  +sanitized_input: dict
+  +frozen_plan: FrozenExecutionPlan
+  +review_reason: str
 }
 
-class HandoffDirective {
-  +from_agent_key: str
-  +next_agent_key: str
-  +method: String
-  +reason: String
-  +arguments: Map[str, object]
+class SnapshotVerificationResult {
+  +signature_matched: bool
+  +ttl_valid: bool
+  +reason_code: ReasonCode
+  +route_allowed: bool
+  +method_allowed: bool
+  +stream_capability_allowed: bool
+  +security_policy_allowed: bool
+  +endpoint_available: bool
+  +is_allowed(): bool
 }
 
-class HandoffValidationResult {
-  +accepted: boolean
-  +reason_code: String
-  +directive: HandoffDirective
-  +plan: RoutingPlan
-  +hop_count: int
+class SupervisorTaskEvent {
+  +task_id: str
+  +event_id: str
+  +cursor: str
+  +event_type: str
+  +created_at: datetime
+  +payload: dict
+  +is_replayable: bool
 }
 
-class InvocationPolicyContext {
-  +plan: RoutingPlan
-  +planning_context: SupervisorPlanningContext
+' --- Interfaces (Ports) ---
+
+interface PlanningService {
+  +plan(user_input, context): Tuple[bool, dict]
 }
 
-class HitlPolicyContext {
-  +session_id: str
-  +message: String
-  +model: String
+interface A2AInvocationService {
+  +invoke(agent_key, method, arguments): dict
+  +invoke_stream(agent_key, method, arguments): AsyncGenerator
 }
 
-class HandoffPolicyContext {
-  +planning_context: SupervisorPlanningContext
-  +batch_results: List<DownstreamCallResult>
+interface HandoffPolicyService {
+  +evaluate(step, context): HandoffValidationResult
 }
 
-class SupervisorOutputEvent {
-  +type: SupervisorOutputEventType
-  +content: String
+interface ConversationStore {
+  +get_messages(session_id, limit): List[dict]
+  +save_message(session_id, message): None
 }
 
-class SupervisorGraphState {
-  +SESSION_ID
-  +TASK_ID
-  +USER_MESSAGE
-  +MODEL
-  +HISTORY
-  +CHECKPOINT_ID
-  +CURRENT_NODE
-  +ROUTING_PLANS
-  +ROUTING_INDEX
-  +CURRENT_PLAN
-  +DOWNSTREAM_RESULTS
-  +LAST_INVOKE_BATCH_RESULTS
-  +HANDOFF_VALIDATIONS
-  +HANDOFF_ENABLED
-  +SWARM_SHARED_FACTS
-  +SWARM_STATE_VERSION
-}
+' --- Enums ---
 
 enum TaskState {
   CREATED
@@ -187,107 +115,32 @@ enum TaskState {
   FAILED
 }
 
-enum EventType {
-  ACCEPTED
-  PROGRESS
-  REASONING
-  CHUNK
-  A2UI
-  DONE
-  ERROR
-  HEARTBEAT
+enum ExecutionMode {
+  STREAM
+  UNARY
 }
 
-enum AgentRole {
-  SUPERVISOR
-  PRODUCT
-  RESERVATION
-  USER
-  ASSISTANT
-  SYSTEM
+enum ReasonCode {
+  SUCCESS
+  SNAPSHOT_NOT_FOUND
+  SNAPSHOT_EXPIRED
+  INVALID_HASH
+  DUPLICATE_DECISION
+  ...
 }
 
-enum RedisNamespace {
-  GLOBAL_PREFIX
-  TASK
-  IDEMPOTENCY
-  EVENTS
-  QUEUE
-}
+' --- Relationships ---
 
-class A2aTaskSnapshot {
-  +task_id: str
-  +session_id: str
-  +status: TaskState
-  +request_message: str
-  +response_payload: dict
-  +error_code: str
-  +error_message: str
-}
-
-interface SupervisorPlanningService {
-  +plan(context): SupervisorPlanningDecision
-}
-
-interface HitlDecisionService {
-  +openReview(...): HitlReviewTicket
-  +getReview(...): Optional<HitlReviewTicket>
-  +decide(...): Optional<HitlReviewTicket>
-}
-
-interface A2AInvocationService {
-  +invoke(context): DownstreamCallResult
-}
-
-interface HandoffPolicyService {
-  +evaluate(context): List<HandoffValidationResult>
-}
-
-interface SupervisorResponseComposeService {
-  +stream_compose_events(context): AsyncIterator[SupervisorOutputEvent]
-}
-
-interface SupervisorSwarmCoordinator {
-  +applyRoutingRule(...): List<RoutingPlan>
-  +load_latest_by_session(session_id): Optional[SwarmState]
-}
-
-SupervisorAgentRequest --> SupervisorPlanningContext
-SupervisorExecutionRequest --> SupervisorAgentRequest
-SupervisorPlanningContext --> RoutingPlan
-SupervisorPlanningContext --> DownstreamCallResult
-SupervisorPlanningContext --> SwarmState
-SupervisorPlanningContext --> SupervisorGraphState
-DownstreamCallResult --> HandoffDirective
-HandoffValidationResult --> HandoffDirective
-HandoffValidationResult --> RoutingPlan
-InvocationPolicyContext --> RoutingPlan
-InvocationPolicyContext --> SupervisorPlanningContext
-HandoffPolicyContext --> SupervisorPlanningContext
-HandoffPolicyContext --> DownstreamCallResult
-SupervisorPlanningService --> SupervisorPlanningDecision
-HitlDecisionService --> HitlReviewTicket
-HitlReviewTicket --> ReviewedExecutionSnapshot
-ReviewedExecutionSnapshot --> FrozenExecutionPlan
-FrozenExecutionPlan --> RoutingPlan
-FrozenExecutionPlan --> ExecutionConstraintSet
-SupervisorResponseComposeService --> SupervisorOutputEvent
-
-note bottom of SupervisorPlanningContext
-Current shared runtime state for:
-- planning
-- invoke/handoff
-- compose
-- swarm facts
-- checkpoint recovery
-- reviewed snapshot resume
-end note
+FrozenExecutionPlan "1" *-- "many" FrozenRoutingStep
+FrozenExecutionPlan "1" *-- "1" ExecutionConstraintSet
+ReviewedExecutionSnapshot "1" *-- "1" FrozenExecutionPlan
+PlanningService ..> FrozenExecutionPlan : generates
+HandoffPolicyService ..> FrozenRoutingStep : evaluates
 
 note bottom of FrozenExecutionPlan
 Hash/verification rules:
 - request_hash and frozen_plan_hash use deterministic canonical rules
-- schemaVersion and canonicalizationVersion are part of the contract
-- STREAM approve resumes by task event stream re-subscribe, not by continuing approve HTTP response
+- STREAM approve resumes by task event stream re-subscribe
 end note
 
 @enduml

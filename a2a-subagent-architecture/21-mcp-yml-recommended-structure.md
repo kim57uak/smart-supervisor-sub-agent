@@ -1,132 +1,61 @@
-# 21. Recommended Configuration Structure
+# 21. Sub-Agent Configuration Structure
 
-Updated: 2026-04-25
+Updated: 2026-05-01 (Implementation Aligned)
+Aligned with: `src/sub-agent/app/core/config.py`
 
-## settings/mcp.yml
+## Configuration Principles
 
-```yaml
-#=============개발서버 설정===============================
----
-spring:
-  config:
-    activate:
-      on-profile: dev
+- **Pydantic Settings**: 인프라 및 런타임 수치 제어는 `pydantic-settings`와 환경변수(`SUBAGENT_` prefix)를 우선한다.
+- **Resource Separation**: LLM 프롬프트 등 텍스트 리소스는 `app/config/prompts.yml`에서 별도 관리한다.
+- **MCP Server Registry**: 연동할 MCP 서버 목록 및 도구 허용 목록을 중앙 설정으로 관리한다.
 
-mcp:
-  weather:
-    host: http://10.225.18.50:8080
-    protocol: streamable
-    endpoint: /mcp
-    reuse-session: true
-    cache-tools: true
-    allow-legacy-sse-fallback: true
-    tools: getWeatherForecastByLocation, getAlerts
-  supply-cost:
-    host: http://10.225.18.50:8080
-    protocol: streamable
-    endpoint: /mcp
-    reuse-session: true
-    cache-tools: true
-    allow-legacy-sse-fallback: true
-    tools: getSupplyCostInfo
-  reservation:
-    host: http://10.225.18.50:8080
-    protocol: streamable
-    endpoint: /mcp
-    reuse-session: true
-    cache-tools: true
-    allow-legacy-sse-fallback: true
-    tools: createReservation
+## Environment Variables (.env)
 
-  sale-product:
-    host: http://10.225.18.50:8080
-    protocol: streamable
-    endpoint: /mcp
-    reuse-session: true
-    cache-tools: true
-    allow-legacy-sse-fallback: true
-    tools: createAutoCopySaleProducts, getSaleProductDetails
+```bash
+SUBAGENT_DEBUG=false
+SUBAGENT_REDIS_URL=redis://localhost:6379/0
+SUBAGENT_OPENAI_API_KEY=sk-...
+SUBAGENT_ORCHESTRATION_ENGINE=langgraph # or burr
 ```
 
-## settings/agent.yml
+## Nested Settings Structure (Reference)
 
-```yaml
+Derived from `src/sub-agent/app/core/config.py`:
+
+### Agent Runtime & Graph
+```python
 agent:
   graph:
     max_tool_iterations: 4
     checkpoint_enabled: true
-    graph_id: default_graph
   runtime:
-    request_timeout: 20s
-    provider_timeout: 12s
-    tool_timeout: 8s
+    request_timeout: "20s"
     max_tool_calls_per_request: 6
-    max_prompt_tokens: 8192
-    max_completion_tokens: 2048
-    provider_fallback_order: [gemini-2.5-flash]
-    concurrency:
-      per_scope_max_inflight: 32
-      per_scope_max_queue_size: 128
-    tool_parallel:
-      enabled: false
-      max_parallel_tool_calls: 1
-      max_parallel_tool_calls_cap: 3
-      strategy: continue-on-error
   trace:
     enabled: true
-    propagate_fields: [trace_id, request_id, session_id]
-    use_supervisor_values_first: true
-    generate_missing_only: true
-    request_id_source: a2a_jsonrpc_id
-  redis:
-    ttl: 30m
-    key_prefix:
-      global: PACKAGE
-      conversation: PACKAGE:agent:conv
-      checkpoint: PACKAGE:agent:ckpt
-      a2a_task: PACKAGE:agent:a2a
-  default_model: gemini-2.5-flash
-  scopes:
-    weather:
-      allowed_servers: [weather]
-      allowed_tools_by_server:
-        weather: [get_weather_forecast_by_location, get_alerts]
-      default_model: gemini-2.5-flash
-    supply_cost:
-      allowed_servers: [supply_cost]
-      allowed_tools_by_server:
-        supply_cost: [get_supply_cost_info]
-      default_model: gemini-2.5-flash
-    reservation:
-      allowed_servers: [reservation]
-      allowed_tools_by_server:
-        reservation: [create_reservation]
-      default_model: gemini-2.5-flash
-    sale_product:
-      allowed_servers: [sale_product]
-      allowed_tools_by_server:
-        sale_product: [create_auto_copy_sale_products, get_sale_product_details]
-      default_model: gemini-2.5-flash
+    propagate_fields: ["trace_id", "request_id", "session_id"]
 ```
 
-## settings/a2a.yml
-
-```yaml
-a2a:
-  enabled: true
-  public_base_url: http://localhost:8080
-  scopes:
-    - weather
-    - supply_cost
-    - reservation
-    - sale_product
+### MCP Servers Connectivity
+```python
+mcp_servers:
+  weather:
+    host: "http://10.225.18.50:8080"
+    protocol: "streamable"
+    endpoint: "/mcp"
+    tools: ["getWeatherForecastByLocation", "getAlerts"]
+  reservation:
+    host: "http://10.225.18.50:8080"
+    tools: ["createReservation"]
 ```
 
 ## Required Policy
 
-- runtime guardrail 값은 모두 `settings/agent.yml`에서 관리한다.
-- transport retry/fallback도 코드 하드코딩이 아니라 설정 정책으로만 관리한다.
-- tool 병렬 호출 기본 정책은 `enabled=false`, `max_parallel_tool_calls=1`이다.
-- request correlation(`trace_id + request_id + session_id`)은 모든 주요 계층에 전달되어야 한다.
-- correlation key는 supervisor 전달값을 우선 사용하고 누락된 값만 sub-agent가 생성한다.
-- 설정 키는 `snake_case`를 사용하고, 공개 URL path는 `sale-product`처럼 hyphenated scope를 사용할 수 있다.
+1. **Trace Propagation**: `trace_id`, `request_id`, `session_id`는 모든 주요 계층에 전달되어야 하며, Supervisor 전달값을 우선 사용한다.
+2. **MCP Registry**: `McpToolRegistry`는 설정된 `mcp_servers` 정보를 기반으로 런타임에 툴 스키마를 동적으로 로드한다.
+3. **Idempotency**: 모든 Redis 키는 `subagent:idempotency` 네임스페이스를 사용하여 격리되며, `request_id` 기반 중복 실행을 방지한다.
+4. **Prompt Management**: `app/config/prompts.yml`에서 시스템 프롬프트를 중앙 관리하며, `Settings.prompts` 프로퍼티를 통해 접근한다.
+5. **Session Lifecycle Policy**: 
+    - **Generation**: `session_id`는 오직 **Client UI**에서 생성(localStorage/UUID)되어야 한다.
+    - **Propagation**: 모든 A2A 호출(Supervisor -> Sub-agent) 시 최상위 파라미터에 명시적으로 전달되어야 한다.
+    - **Resolution**: 서버는 전달된 세션 ID를 절대적으로 신뢰하며, 소멸된 세션을 복구하기 위해 내부 상태(Redis 등)를 기반으로 추론하지 않는다.

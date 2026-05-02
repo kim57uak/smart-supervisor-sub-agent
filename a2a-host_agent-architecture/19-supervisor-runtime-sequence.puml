@@ -7,23 +7,23 @@ skinparam ParticipantPadding 20
 
 actor User
 participant "supervisor_a2a_endpoint" as Controller
-participant "supervisor_agent_service" as AgentService
-participant "execution_consistency_coordinator" as Consistency #DFF6EE
-participant "hitl_gate_service" as HitlGate
-participant "task_queue_service" as TaskQueue #FFEBCF
-participant "task_event_stream_service" as TaskEventStream
+participant "SupervisorAgentService" as AgentService
+participant "ExecutionConsistencyCoordinator" as Consistency #DFF6EE
+participant "HitlGateService" as HitlGate
+participant "TaskQueueService" as TaskQueue #FFEBCF
+participant "TaskEventStreamService" as TaskEventStream
 database "Redis (Queue/Stream/Store)" as Redis
 
 box "Background Worker Tier" #F9F9F9
 participant "worker.py" as Worker #EFE1FF
-participant "supervisor_graph_execution_service" as GraphExecution
+participant "SupervisorGraphExecutionService" as GraphExecution
 participant "LangGraph CompiledGraph" as Graph
-participant "a2a_invocation_service" as Invoker
-participant "supervisor_response_compose_service" as Composer
+participant "DefaultA2AInvocationService" as Invoker
+participant "LlmSupervisorResponseComposeService" as Composer
 end box
 
 User -> Controller : SendMessage / SendStreamingMessage
-Controller -> AgentService : execute_task(request_id, message)
+Controller -> AgentService : execute_task(session_id, message)
 
 == 1. Idempotency & Admission ==
 AgentService -> Consistency : check_and_reserve_request(request_id)
@@ -39,7 +39,7 @@ else new request
   == 2. Planning & HITL Evaluation ==
   AgentService -> HitlGate : evaluate_and_open_review(...)
   HitlGate -> HitlGate : Sanitize input (PromptInjectionGuard)
-  HitlGate -> HitlGate : Planning (LLM) + Hash calculation
+  HitlGate -> HitlGate : Planning (PlanningService) + Hash calculation
   
   alt no review needed
     HitlGate --> AgentService : review_required: false
@@ -55,13 +55,13 @@ end
 
 == 3. Background Execution (Worker) ==
 
-Worker -> Redis : BRPOP supervisor:task_queue
+Worker -> Redis : BRPOPLPUSH supervisor:task_queue
 Redis --> Worker : task_msg
 Worker -> GraphExecution : execute_plan(plan)
 activate GraphExecution
 
 GraphExecution -> Redis : load_swarm_state(session_id)
-GraphExecution -> Graph : ainvoke(initial_state)
+GraphExecution -> Graph : invoke(initial_state)
 
 loop Graph Nodes (select -> invoke -> handoff -> merge)
   Graph -> Invoker : invoke downstream (with Circuit Breaker)

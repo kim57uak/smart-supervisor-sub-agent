@@ -97,8 +97,9 @@ async def handle_supervisor_request(
     
     # 3. tasks/review/get | GetReview
     elif method in [ApiMethod.REVIEW_GET.value, ApiMethod.REVIEW_GET_LEGACY.value]:
-        task_id = request_data.params.get("task_id")
-        session_id = request_data.params.get("session_id", "unknown")
+        session_id = request_data.params.get("session_id")
+        if not session_id:
+            return translator.to_rpc_error(request_data.id, RpcErrorCode.INVALID_PARAMS.value, "session_id is required")
         snapshot = await agent_service.read_facade.get_snapshot(session_id, task_id)
         if not snapshot:
             return translator.to_rpc_error(
@@ -120,7 +121,9 @@ async def handle_supervisor_request(
     # 5. tasks/cancel | CancelTask
     elif method in [ApiMethod.CANCEL_TASK.value, ApiMethod.CANCEL_TASK_LEGACY.value]:
         params = CancelTaskRequest(**request_data.params)
-        session_id = params.session_id or "unknown"
+        session_id = params.session_id
+        if not session_id:
+            return translator.to_rpc_error(request_data.id, RpcErrorCode.INVALID_PARAMS.value, "session_id is required")
         success = await agent_service.cancel_task(session_id, params.id)
         return JsonRpcResponse(
             id=request_data.id, 
@@ -157,7 +160,10 @@ async def handle_supervisor_stream(
         
         async def event_generator():
             try:
-                session_id = params.session_id or "unknown"
+                session_id = params.session_id
+                if not session_id:
+                     yield f"event: error\ndata: {json.dumps({'error': 'SESSION_ID_REQUIRED'})}\n\n"
+                     return
                 logger.info("stream_subscription_started", task_id=params.task_id, session_id=session_id, cursor=params.cursor)
                 async for event in event_service.subscribe(session_id, params.task_id, params.cursor, replay=params.replay):
                     yield f"event: {event.event_type}\ndata: {json.dumps(event.payload)}\n\n"

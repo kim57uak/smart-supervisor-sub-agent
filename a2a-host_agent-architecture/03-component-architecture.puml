@@ -12,37 +12,37 @@ skinparam ranksep 30
 ' Layer 1: API & Security Entry
 package "01. Entry & Security Layer" {
   [Supervisor API] as API
-  [Request Validator] as Validator
-  [Prompt Injection Guard] as Guard
+  [SupervisorA2aRequestValidator] as Validator
+  [PromptInjectionGuard] as Guard
 }
 
 ' Layer 2: Application Orchestration
 package "02. Application Orchestration" {
-  [Supervisor Agent Service] as AgentService
-  [HITL Gate Service] as HitlGate
-  [Fact Governance Service] as FactGov
+  [SupervisorAgentService] as AgentService
+  [HitlGateService] as HitlGate
+  [FactGovernanceService] as FactGov
 }
 
 ' Layer 3: Execution & Background Processing
 package "03. Execution & Worker Layer" {
-  [Task Queue Service] as TaskQueue #FFEBCF
-  [Worker Execution Service] as WorkerService #EFE1FF
-  [Graph Execution Service] as GraphService #DCEBFF
+  [TaskQueueService] as TaskQueue #FFEBCF
+  [WorkerExecutionService] as WorkerService #EFE1FF
+  [SupervisorGraphExecutionService] as GraphService #DCEBFF
 }
 
 ' Layer 4: Persistence & Read Models
 package "04. Persistence & Read Layer" {
-  [Consistency Coordinator] as Coordinator
-  [Read Facade] as ReadFacade
-  [Snapshot Verifier] as Verifier
+  [ExecutionConsistencyCoordinator] as Coordinator
+  [SupervisorReadFacade] as ReadFacade
+  [SnapshotVerificationQuery] as Verifier
 }
 
 ' Layer 5: Technical Adapters
 package "05. Technical Adapters" {
-  [LLM Planner] as Planner
-  [LLM Composer] as Composer
-  [LangGraph Factory] as GraphFactory
-  [A2A Invocation Service] as Invocation
+  [LlmPlanningService] as Planner
+  [LlmComposeService] as Composer
+  [LangGraphFactory] as GraphFactory
+  [DefaultA2AInvocationService] as Invocation
 }
 
 ' Infrastructure
@@ -60,7 +60,7 @@ Planner -[hidden]down-> Redis
 ' 1. Request Flow
 API -> Validator : validate
 API -> AgentService : execute
-AgentService -> Guard : sanitize
+HitlGate -> Guard : sanitize
 AgentService -> HitlGate : process
 HitlGate -> Planner : plan
 HitlGate -> Coordinator : snapshot
@@ -71,7 +71,7 @@ WorkerService -> TaskQueue : dequeue (Reliable)
 WorkerService -> GraphService : run
 GraphService -> GraphFactory : build
 GraphService -> Invocation : call agent
-Invocation -> FactGov : validate facts
+GraphService -> FactGov : update facts
 GraphService -> Composer : synthesize
 GraphService -> Coordinator : update state
 

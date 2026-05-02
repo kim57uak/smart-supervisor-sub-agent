@@ -10,9 +10,9 @@ actor User
 
 box "API Tier" #E8F8F5
 participant "supervisor_a2a_endpoint" as Controller
-participant "supervisor_a2a_request_validator" as Validator
-participant "supervisor_agent_service" as AgentService
-participant "task_event_stream_service" as EventService
+participant "SupervisorA2aRequestValidator" as Validator
+participant "SupervisorAgentService" as AgentService
+participant "TaskEventStreamService" as EventService
 end box
 
 box "Message Broker (Redis)" #FDF2E9
@@ -21,41 +21,41 @@ database "supervisor:events" as EventStream
 end box
 
 box "Worker Tier" #F9E79F
-participant "EnterpriseWorker" as Worker
-participant "supervisor_graph_execution_service" as GraphExecution
-participant "supervisor_progress_publisher" as Publisher
-participant "supervisor_response_compose_service" as Composer
-participant "default_supervisor_llm_runtime" as Runtime
+participant "worker.py" as Worker
+participant "SupervisorGraphExecutionService" as GraphExecution
+participant "SupervisorProgressPublisher" as Publisher
+participant "LlmSupervisorResponseComposeService" as Composer
+participant "DefaultSupervisorLlmRuntime" as Runtime
 end box
 
 == 1. Task Submission (Unary) ==
-User -> Controller : POST /a2a/supervisor\nJSON-RPC method:\nmessage/send or SendMessage
+User -> Controller : POST /a2a/supervisor\nJSON-RPC method: message/send
 Controller -> Validator : validate_request(params)
 Validator --> Controller : valid
-Controller -> AgentService : execute_task(session_id, message, request_id)
+Controller -> AgentService : execute_task(session_id, message)
 
 AgentService -> TaskQueue : LPUSH (Enqueue Plan)
 AgentService --> Controller : status: STREAMING\nstream_endpoint: /stream
 Controller --> User : JSON-RPC Response (TaskView)
 
 == 2. Stream Subscription (SSE) ==
-User -> Controller : POST /a2a/supervisor/stream\nAccept: text/event-stream\nJSON-RPC method:\ntasks/events or TaskEvents
+User -> Controller : POST /a2a/supervisor/stream\nAccept: text/event-stream\nJSON-RPC method: tasks/events
 Controller -> EventService : subscribe(session_id, task_id, cursor)
 
-loop Event Polling / Replay
-    EventService -> EventStream : XREAD (Tail or Replay)
+loop Event Polling / Replay (XREAD block)
+    EventService -> EventStream : XREAD
     EventStream --> EventService : event payload
-    EventService --> Controller : yield payload
-    Controller --> User : SSE chunk (event: chunk/reasoning/a2ui/done)
+    EventService --> Controller : yield SupervisorTaskEvent
+    Controller --> User : SSE data: {event_type, payload}
 end
 
 == 3. Background Execution & Event Publishing ==
-Worker -> TaskQueue : BRPOP
+Worker -> TaskQueue : BRPOPLPUSH
 TaskQueue --> Worker : task_msg
 Worker -> GraphExecution : execute_plan(session_id, task_id, plan)
 
-loop Graph Execution (Downstream Agent calls)
-    GraphExecution -> Publisher : publish_progress("calling_agent", data)
+loop Graph Execution
+    GraphExecution -> Publisher : publish_progress(...)
     Publisher -> EventStream : XADD
     GraphExecution -> Publisher : publish_chunk(agent_key, payload)
     Publisher -> EventStream : XADD
@@ -67,13 +67,7 @@ Runtime --> Composer : AsyncIterator[chunk]
 
 loop Stream LLM Response
     Composer --> GraphExecution : yield (event_type, token)
-    alt event_type == "reasoning"
-        GraphExecution -> Publisher : publish_reasoning(token)
-    else event_type == "a2ui"
-        GraphExecution -> Publisher : publish_a2ui(token)
-    else event_type == "chunk"
-        GraphExecution -> Publisher : publish_chunk("supervisor", token)
-    end
+    GraphExecution -> Publisher : publish_event(type, token)
     Publisher -> EventStream : XADD
 end
 
@@ -82,10 +76,10 @@ Publisher -> EventStream : XADD
 
 note right of Controller
 Current SSE framing for Client
-- event: reasoning
-- event: chunk
-- event: a2ui
-- event: error
-- event: done
+- event_type: reasoning
+- event_type: chunk
+- event_type: a2ui
+- event_type: error
+- event_type: done
 end note
 @enduml

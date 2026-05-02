@@ -1,26 +1,38 @@
 @startuml
-title 13. MCP State Machine (Source Synchronized)
+title 13. Sub-Agent Task State Machine (ProcessStatus)
 
 skinparam shadowing false
+skinparam state {
+  BackgroundColor<<Terminal>> #FADBD8
+  BackgroundColor<<Active>> #E8F8F5
+}
 
-[*] --> received
-received --> validated
-validated --> planned
-planned --> executing
-executing --> finalized
-finalized --> composing
-composing --> completed
-executing --> failed
-composing --> failed
+[*] --> ACCEPTED : Request Received (UseCase)
 
-note right of validated
-- key = session_id + request_id
-- trace_id propagated
+state "ACCEPTED" as ACCEPTED : Task enqueued in Redis
+state "RUNNING" as RUNNING <<Active>> : Worker processing task
+
+ACCEPTED --> RUNNING : Worker dequeues (AgentExecutor.execute)
+
+state RUNNING {
+  [*] --> Planning
+  Planning --> Executing : Tool Plan created
+  Executing --> Planning : Tool result processed
+  Executing --> Composing : All tools completed
+  Planning --> Composing : No tools needed
+}
+
+RUNNING --> COMPLETED : Final Answer generated
+RUNNING --> FAILED : Exception caught
+
+state "COMPLETED" as COMPLETED <<Terminal>>
+state "FAILED" as FAILED <<Terminal>>
+
+COMPLETED --> [*]
+FAILED --> [*]
+
+note bottom
+  - 상태 전이는 AgentPersistence를 통해 Redis에 영속화된다.
+  - 모든 상태 변화는 AgentProgressPublisher를 통해 클라이언트에 스트리밍된다.
 end note
-
-note right of finalized
-- tool results gathered
-- history updated
-end note
-
 @enduml

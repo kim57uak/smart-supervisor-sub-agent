@@ -1,5 +1,5 @@
 @startuml
-title 06. Supervisor A2A Request Sequence (Detailed Enterprise Architecture, 2026-04-30)
+title 06. Supervisor A2A Request Sequence (Detailed Enterprise Architecture, 2026-05-01)
 
 skinparam shadowing false
 skinparam sequenceMessageAlign center
@@ -8,23 +8,23 @@ autonumber
 
 actor User
 participant "supervisor_a2a_endpoint" as Controller
-participant "supervisor_a2a_request_validator" as Validator
-participant "supervisor_agent_service" as AgentService
-participant "prompt_injection_guard" as Guard
-participant "llm_planning_service" as Planner
-participant "hitl_gate_service" as HitlGate
-participant "task_queue_service" as TaskQueue #FFEBCF
-participant "supervisor_execution_persistence_service" as PersistenceFacade
-participant "execution_consistency_coordinator" as Consistency
+participant "SupervisorA2aRequestValidator" as Validator
+participant "SupervisorAgentService" as AgentService
+participant "PromptInjectionGuard" as Guard
+participant "PlanningService" as Planner
+participant "HitlGateService" as HitlGate
+participant "TaskQueueService" as TaskQueue #FFEBCF
+participant "SupervisorExecutionPersistenceService" as PersistenceFacade
+participant "ExecutionConsistencyCoordinator" as Consistency
 participant "SnapshotVerificationQuery" as VerifyQuery
 database "Redis (Queue/Stream/Store)" as Redis
 
 box "Background Worker Tier" #F9F9F9
 participant "worker.py" as Worker #EFE1FF
-participant "supervisor_graph_execution_service" as GraphExecution
+participant "SupervisorGraphExecutionService" as GraphExecution
 participant "LangGraph CompiledGraph" as Graph
-participant "a2a_invocation_service" as Invoker
-participant "supervisor_response_compose_service" as Composer
+participant "DefaultA2AInvocationService" as Invoker
+participant "LlmSupervisorResponseComposeService" as Composer
 end box
 
 participant "Downstream A2A Agents" as DownstreamAgents
@@ -133,7 +133,6 @@ AgentService -> VerifyQuery : execute(task_id, params)
 activate VerifyQuery
 VerifyQuery -> VerifyQuery : check_hashes(request, plan)
 VerifyQuery -> VerifyQuery : verify_resume_token()
-VerifyQuery -> VerifyQuery : check_drift_policy()
 VerifyQuery --> AgentService : verification_result (SUCCESS)
 deactivate VerifyQuery
 

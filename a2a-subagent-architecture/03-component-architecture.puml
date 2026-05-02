@@ -1,44 +1,50 @@
 @startuml
 !pragma layout smetana
-title 03. Sub-Agent Component Architecture (2026-04-30)
+title 03. Sub-Agent Component Architecture (2026-05-01)
 
 skinparam shadowing false
 skinparam componentStyle rectangle
 
 package "API Layer" {
-  [A2A Handler] as A2A
-  [Chat API] as Chat
   [Discovery API] as Discovery
+  [Chat API] as Chat
 }
 
 package "Application Layer" {
-  [Agent Executor] as Executor
-  [Chat Usecase] as Usecase
-  [Background Worker] as Worker
-  [Progress Publisher] as Publisher
+  [AgentChatUseCase] as Usecase
+  [AgentExecutor] as Executor
+  [WorkerExecutionService] as Worker
+  [AgentProgressPublisher] as Publisher
 }
 
-package "Adapters" {
-  [MCP Infrastructure] as MCP
-  [LLM Adapter] as LLM
-  [LangGraph Factory] as GraphFactory
-  [Redis Store] as Store
+package "Adapters & Engine" {
+  [McpToolRegistry] as Registry
+  [McpToolExecutor] as McpExec
+  [LlmPlanningService] as Planner
+  [LlmResponseComposeService] as Composer
+  [OrchestrationEngine (LangGraph/Burr)] as Engine
+  [RedisStores] as Store
 }
 
 database "Redis" as Redis
-package "MCP Servers" as MCPServers
+node "MCP Servers" as MCPServers
 
-A2A -> Executor : Enqueue Task
-Chat -> Usecase
-Usecase -> Executor
-Worker -> Redis : Poll Task
+Discovery -> Usecase : Handle A2A
+Chat -> Usecase : Handle Chat
+Usecase -> Store : Save Initial State
+Usecase -> Redis : LPUSH (Task Queue)
+
+Worker -> Redis : BRPOP
 Worker -> Executor : Execute
-Executor -> GraphFactory
-GraphFactory -> LLM : Plan / Compose
-GraphFactory -> MCP : Call Tool
-MCP -> MCPServers : JSON-RPC over SSE/HTTP
-Executor -> Publisher : Stream Events
-Publisher -> Redis : XADD
+Executor -> Engine : Run Workflow
+Engine -> Planner : Plan Tools
+Engine -> McpExec : Execute Tool
+McpExec -> Registry : Get Schema
+McpExec -> MCPServers : JSON-RPC
+Engine -> Composer : Stream Response
+
+Executor -> Publisher : Publish Progress
+Publisher -> Redis : XADD (Event Stream)
 Executor -> Store : Persist State
-Store -> Redis
+Store -> Redis : SAVE
 @enduml

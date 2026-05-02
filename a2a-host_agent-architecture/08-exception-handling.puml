@@ -7,17 +7,17 @@ skinparam componentStyle rectangle
 
 package "Entry Tier" {
   [supervisor_a2a_endpoint] as Controller
-  [supervisor_a2a_request_validator] as Validator
+  [SupervisorA2aRequestValidator] as Validator
 }
 
 package "Domain/Execution Tier" {
-  [supervisor_agent_service] as AgentService
-  [supervisor_graph_execution_service] as GraphExecution
-  [default_a2a_invocation_service] as Invoker
+  [SupervisorAgentService] as AgentService
+  [SupervisorGraphExecutionService] as GraphExecution
+  [DefaultA2AInvocationService] as Invoker
 }
 
 package "Error Mapping" {
-  [supervisor_exception_translator] as Translator
+  [SupervisorExceptionTranslator] as Translator
 }
 
 Controller --> Validator : validate_request
@@ -37,7 +37,7 @@ note right of Translator
 Standardized Error Mapping:
 - ValueError -> Invalid Params / Method Not Found
 - RuntimeError -> Execution Failure / Circuit Breaker
-- Integrity Result -> ReasonCode Mapping (Doc 09)
+- Integrity Result -> ReasonCode Mapping
 - All stack traces are suppressed in A2A response
 end note
 

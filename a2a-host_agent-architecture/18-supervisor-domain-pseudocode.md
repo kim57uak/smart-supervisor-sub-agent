@@ -4,13 +4,19 @@
 
 ```python
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 
 class SendMessageParams(BaseModel):
     session_id: str
     message: str
     request_id: Optional[str] = None
     model: Optional[str] = None
+
+class ReviewDecideRequest(BaseModel):
+    task_id: str
+    decision: Decision
+    session_id: Optional[str] = None
+    request_params: Optional[Dict[str, Any]] = None
 ```
 
 ## Frozen Plan / Routing Step
@@ -28,6 +34,7 @@ class FrozenRoutingStep(BaseModel):
     arguments: Dict[str, Any]
     handoff_depth: int
     parent_agent_key: Optional[str] = None
+    pre_hitl_a2ui: Optional[str] = None
 
 class ExecutionConstraintSet(BaseModel):
     max_concurrency: int = 1
@@ -94,20 +101,21 @@ async def execute_plan(self, session_id, task_id, plan):
     # 1. Restore Shared State
     swarm_state = await self.persistence_facade.load_swarm_state(session_id)
     
-    # 2. Run LangGraph (Compiled Graph)
+    # 2. Run LangGraph via OrchestrationEngine
     # Nodes: select -> invoke -> handoff_evaluate -> handoff_apply -> merge
-    final_state = await self.graph.ainvoke({
-        "plan": plan, 
-        "swarm_state": swarm_state,
-        "results": []
-    })
+    final_state = await self.engine.execute(session_id, task_id, plan, initial_state)
 
-    # 3. Post-graph Compose & Stream
-    async for event_type, token in self.compose_service.stream_compose(final_state["results"]):
-        await self.event_publisher.publish(event_type, token)
+    # 3. Post-graph Compose & Stream (Outside Graph)
+    final_answer = await self._compose_and_publish_results(
+        session_id, task_id, final_state["results"], context
+    )
 
     # 4. Atomic Terminal Persistence
-    await self.persistence_facade.persist_execution_completion(session_id, task_id, final_state)
+    await self.persistence_facade.persist_execution_completion(session_id, task_id, {
+        "results": final_state["results"],
+        "final_answer": final_answer,
+        "swarm_state": final_state.get("swarm_state")
+    })
 ```
 
 ## Review Approval & Audit
@@ -126,7 +134,7 @@ async def verify(self, task_id, session_id, request_params):
     if recalculated_hash != snapshot.request_hash: return FAIL(TAMPER_DETECTED)
 
     # 3. Drift Audit (Agent Policy)
-    if any(agent.is_retired() for agent in snapshot.plan): return FAIL(PLAN_DRIFT)
+    if any(agent.is_retired() for agent in snapshot.plan.routing_queue): return FAIL(PLAN_DRIFT)
 
     return SUCCESS
 ```

@@ -1,69 +1,68 @@
-# 24. Domain Class Model And Implementation Pseudocode
+# 24. Sub-Agent Domain Pseudocode
 
-Updated: 2026-04-29 (Final Synchronization with Source Code)
-
-## Purpose
-
-이 문서는 Python 기반 agentic MCP runtime(Sub-agent)의 최종 구현 사양서다.
-모든 의사코드는 `src/sub-agent`의 실제 구현 로직과 일치한다.
-
-## Architecture Principles
-
-- **Separation of Concerns**: API, Application, Infrastructure를 명확히 분리.
-- **Hexagonal Architecture**: 도메인 로직은 `ports`에 의존하고, 구체 기술은 `adapters`에서 구현.
-- **Decoupled Execution**: API는 작업 접수(`enqueue`)만 담당, 실제 실행은 워커가 수행.
-- **Centralized Config**: Pydantic Settings를 이용한 설정 관리.
-
-## Package Layout (Final)
-
-```text
-src/sub-agent/app
-├── adapters/         # Implementation of Ports (Redis, LLM, MCP, Orchestration)
-│   ├── llm/          # LlmPlanner, LlmComposer
-│   ├── mcp/          # McpExecutor
-│   ├── orchestration/ # WorkflowFactory
-│   └── store/        # RedisAdapter (Store, TaskQueue, ProgressPublisher 구현)
-├── api/              # FastAPI Routers (chat.py, discovery.py, stream.py)
-├── application/      # Business Logic (CQRS)
-│   ├── execution/    # AgentChatUseCase, AgentExecutor, WorkerExecutionService
-│   ├── persistence/  # AgentPersistence, StateCoordinator
-│   └── read/         # AgentReader
-├── ports/            # Abstract Interface Definitions (interfaces.py)
-├── domain/           # Entities (models.py), Enums (enums.py)
-├── infrastructure/   # RedisClient, LlmRuntime
-└── core/             # Centralized Settings (config.py, dependencies.py)
-```
-
-## Representative Contracts (Ports)
+## Core Models (domain/models.py)
 
 ```python
-class Store(Protocol):
-    async def save_task(self, task: AgentTask) -> None: ...
-    async def check_and_reserve_idempotency(self, request_id: str, task_id: str) -> bool: ...
+class AgentTask(BaseModel):
+    task_id: str
+    session_id: str
+    request_id: str
+    status: ProcessStatus  # ACCEPTED | RUNNING | COMPLETED | FAILED
+    result: Optional[AgentExecutionResult] = None
 
-class TaskQueue(Protocol):
-    async def enqueue(self, task_data: Dict[str, Any]) -> None: ...
-    async def dequeue(self) -> Dict[str, Any]: ...
+class ToolPlan(BaseModel):
+    tool_name: str
+    server_name: str
+    arguments: Dict[str, Any]
+    reasoning: str
 
-class Planner(Protocol):
-    async def plan(self, context: PlanningContext) -> List[ToolPlan]: ...
+class PlanningContext(BaseModel):
+    session_id: str
+    history: List[Message]
+    available_tools: List[Dict[str, Any]]
 ```
 
-## Implementation Flow (Final)
+## Core Execution logic (Service Tier)
 
-1.  **API (`AgentChatUseCase`)**:
-    *   `request_id` 기반 멱등성 체크.
-    *   `AgentTask` 초기 상태 저장 (`AgentPersistence`).
-    *   `TaskQueue`에 작업 데이터 주입.
-2.  **Worker (`WorkerExecutionService`)**:
-    *   큐에서 작업 데이터를 꺼내 **`AgentExecutor`** 호출.
-    *   **`WorkflowFactory`**를 통해 LangGraph 실행.
-    *   `Planning -> Tool Execution -> Compose` 단계를 순차 수행.
-    *   **`ProgressPublisher`**를 통해 Redis Stream으로 이벤트 발행.
-    *   최종 상태를 저장하고 종료.
+### 1. AgentChatUseCase (API Entry)
+```python
+async def handle_chat_request(self, session_id, message, request_id):
+    # 멱등성 체크
+    is_new = await self.persistence.store.check_and_reserve_idempotency(request_id, task_id)
+    if not is_new: return {"status": "ALREADY_PROCESSED"}
 
-## Implementation Guidelines
+    # 초기 상태 저장
+    task = AgentTask(task_id=task_id, session_id=session_id, status=ProcessStatus.ACCEPTED)
+    await self.persistence.store.save_task(task)
 
-- **Traceability**: 모든 로그와 Redis 이벤트에 `trace_id`를 강제 포함.
-- **Centralized Prompts**: `prompts.yml`에서 템플릿을 읽어 실시간 치환.
-- **Enum-First**: 모든 상태 및 역할 정의는 `enums.py`를 사용.
+    # 워커 큐 적재 (Decoupled)
+    await self.queue.enqueue({"task_id": task_id, "session_id": session_id, "message": message})
+    return {"status": "ACCEPTED", "task_id": task_id}
+```
+
+### 2. AgentExecutor (Worker Internal)
+```python
+async def execute(self, session_id, task_id, message):
+    # 1. 상태를 RUNNING으로 전이
+    await self.persistence.update_status(task_id, ProcessStatus.RUNNING)
+    
+    # 2. 오케스트레이션 엔진 호출 (LangGraph/Burr)
+    # Workflow: load_context -> select_tools -> execute_tools -> compose_response
+    final_state = await self.engine.execute(session_id, task_id, initial_state)
+
+    # 3. 결과 영속화 및 히스토리 저장
+    result = AgentExecutionResult(task_id=task_id, final_answer=final_state["final_answer"])
+    await self.persistence.complete_task(task_id, result)
+    await self.persistence.store.save_message(session_id, {"role": "assistant", "content": result.final_answer})
+```
+
+## MCP Tool Execution (Adapter Tier)
+
+```python
+# McpToolExecutor.execute
+async def execute(self, plan: ToolPlan, runtime_fields: Dict):
+    # McpToolRegistry에서 해당 서버의 엔드포인트 정보 획득
+    # MCP 서버로 JSON-RPC 호출 (HTTP/SSE Transport)
+    # 결과를 표준 형식으로 반환
+    return {"status": "success", "output": tool_result}
+```

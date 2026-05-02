@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-title 05. LangGraph Orchestration (Final Implementation)
+title 05. Sub-Agent LangGraph Orchestration (Workflow)
 
 skinparam shadowing false
 skinparam state {
@@ -8,35 +8,35 @@ skinparam state {
   BorderColor<<Node>> #16A085
 }
 
-state "AgentState" as State {
-  task_id: str
-  session_id: str
-  trace_id: str
-  user_message: str
-  history: List[Message]
-  plans: List[ToolPlan]
-  results: List[Dict]
-  final_answer: str
-  status: ProcessStatus
-  loop_count: int
-}
+state "load_context" as LoadContext <<Node>> : 로컬 히스토리 및 문맥 복원
+state "select_tools" as SelectTools <<Node>> : 실행 가능한 도구 계획 수립 (Planner)
+state "execute_tools" as ExecuteTools <<Node>> : 계획된 도구 순차 실행 (Executor)
+state "finalize_context" as FinalizeContext <<Node>> : 실행 결과 요약 및 히스토리 업데이트
+state "compose_response" as ComposeResponse <<Node>> : 최종 사용자 응답 합성 (Composer)
 
-[*] --> load_context
-load_context <<Node>> --> select_tools
-select_tools <<Node>> --> should_continue <<choice>>
+[*] --> LoadContext
+LoadContext --> SelectTools
 
-should_continue --> execute_tools : continue
-should_continue --> compose_response : end (max iterations or no plans)
+SelectTools --> ExecuteTools : [plans exists]
+SelectTools --> ComposeResponse : [no more plans or max iterations]
 
-execute_tools <<Node>> --> finalize_context
-finalize_context <<Node>> --> select_tools : loop
+ExecuteTools --> FinalizeContext
+FinalizeContext --> SelectTools : [loop back for multi-turn planning]
 
-compose_response <<Node>> --> [*]
+ComposeResponse --> [*]
 
-note right of load_context: _load_context()
-note right of select_tools: _select_tools()
-note right of execute_tools: _execute_tools()
-note right of finalize_context: _finalize_context()
-note right of compose_response: _compose_response()
+note right of SelectTools
+  - LlmPlanningService 사용
+  - McpToolRegistry에서 툴 스키마 로드
+end note
 
+note right of ExecuteTools
+  - McpToolExecutor 사용
+  - MCP 서버와 JSON-RPC 통신
+end note
+
+note right of ComposeResponse
+  - LlmResponseComposeService 사용
+  - 스트리밍 응답(Chunk) 발행
+end note
 @enduml

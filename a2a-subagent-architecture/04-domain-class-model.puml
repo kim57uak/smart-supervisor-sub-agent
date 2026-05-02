@@ -1,132 +1,58 @@
 @startuml
 !pragma layout smetana
-title 04. Domain Class Model (Final Source Synchronization)
+title 04. Sub-Agent Domain Class Model (Python)
 
 skinparam shadowing false
 skinparam classAttributeIconSize 0
 
-package "Domain (enums.py)" {
+package "domain" {
+  class AgentTask {
+    + task_id: str
+    + session_id: str
+    + request_id: str
+    + status: ProcessStatus
+    + result: Optional[AgentExecutionResult]
+    + state_version: int
+  }
+
+  class ToolPlan {
+    + tool_name: str
+    + server_name: str
+    + arguments: Dict[str, Any]
+    + reasoning: str
+  }
+
+  class Message {
+    + role: str
+    + content: str
+  }
+
+  class PlanningContext {
+    + session_id: str
+    + history: List[Message]
+    + available_tools: List[Dict[str, Any]]
+    + current_plan: Optional[ToolPlan]
+    + tool_results: List[Dict[str, Any]]
+  }
+
+  class AgentExecutionResult {
+    + task_id: str
+    + final_answer: str
+    + raw_data: Dict[str, Any]
+    + usage_metadata: Dict[str, int]
+  }
+
   enum ProcessStatus {
     ACCEPTED
     RUNNING
     COMPLETED
     FAILED
-    WAITING_REVIEW
-  }
-
-  enum EventType {
-    PLANNING
-    EXECUTING_TOOL
-    TOOL_RESULT
-    COMPOSING
-    CHUNK
-    PROGRESS
-    DONE
-    ERROR
-  }
-
-  enum AgentRole {
-    USER
-    ASSISTANT
-    SYSTEM
-    TOOL
-  }
-
-  enum RedisNamespace {
-    GLOBAL_PREFIX
-    TASK
-    IDEMPOTENCY
-    EVENTS
-    QUEUE
-  }
-
-  enum ReasonCode {
-    SUCCESS
-    IDEMPOTENCY_HIT
-    EXECUTION_FAILURE
-    SNAPSHOT_NOT_FOUND
-    UNAUTHORIZED
   }
 }
 
-package "Domain (models.py)" {
-  class AgentTask {
-    +task_id: str
-    +session_id: str
-    +request_id: str
-    +status: ProcessStatus
-    +result: Optional[AgentExecutionResult]
-    +state_version: int
-  }
-
-  class PlanningContext {
-    +session_id: str
-    +history: List[Message]
-    +available_tools: List[Dict]
-    +current_plan: Optional[ToolPlan]
-    +tool_results: List[Dict]
-  }
-
-  class ToolPlan {
-    +tool_name: str
-    +server_name: str
-    +arguments: Dict
-    +reasoning: str
-  }
-
-  class AiChatChunk {
-    +content: str
-    +metadata: Dict
-  }
-
-  class AgentExecutionResult {
-    +task_id: str
-    +final_answer: str
-    +raw_data: Dict
-    +usage_metadata: Dict
-  }
-
-  class Message {
-    +role: str
-    +content: str
-  }
-}
-
-package "Ports (interfaces.py)" {
-  interface Store <<Protocol>> {
-    +save_task(task: AgentTask)
-    +load_task(task_id: str): AgentTask
-    +check_and_reserve_idempotency(request_id, task_id): bool
-    +update_task_status(task_id, status)
-    +save_swarm_state(session_id, state)
-    +load_swarm_state(session_id): Dict
-  }
-
-  interface Planner <<Protocol>> {
-    +plan(context: PlanningContext): List[ToolPlan]
-  }
-
-  interface ToolExecutor <<Protocol>> {
-    +execute(plan: ToolPlan, session_id: str): Dict
-  }
-
-  interface Composer <<Protocol>> {
-    +stream_compose(context: PlanningContext): AsyncIterator[AiChatChunk]
-  }
-
-  interface TaskQueue <<Protocol>> {
-    +enqueue(task_data: Dict)
-    +dequeue(): Dict
-  }
-
-  interface ProgressPublisher <<Protocol>> {
-    +publish(session_id, task_id, event_data, trace_id)
-  }
-}
-
-AgentTask o-- ProcessStatus
-AgentTask o-- AgentExecutionResult
-PlanningContext *-- ToolPlan
-PlanningContext *-- Message
+AgentTask "1" *-- "0..1" AgentExecutionResult
+PlanningContext "1" *-- "*" Message
+PlanningContext "1" *-- "0..1" ToolPlan
+AgentTask --> ProcessStatus
 
 @enduml

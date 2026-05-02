@@ -1,49 +1,60 @@
 @startuml
-!pragma layout smetana
-title 08. A2A Request Sequence (Decoupled Worker Flow)
+title 08. Sub-Agent A2A Request Sequence (Enterprise Decoupled)
 
 skinparam shadowing false
 skinparam sequenceMessageAlign center
 
-actor "Supervisor" as Supervisor
-participant "a2a_router" as API
-participant "AgentChatUseCase" as Usecase
+actor "Client UI" as UI
+participant "Supervisor" as Supervisor
+participant "discovery.router" as API
+participant "AgentChatUseCase" as UseCase
 participant "AgentPersistence" as Persistence
-database "Redis (RedisAdapter)" as Redis
+participant "Redis (Queue)" as Queue
 participant "WorkerExecutionService" as Worker
 participant "AgentExecutor" as Executor
-participant "LangGraph (Compiled)" as Graph
+participant "OrchestrationEngine" as Engine
 
-Supervisor -> API : JSON-RPC Request\n(trace_id, request_id, session_id)
-API -> Usecase : handle_chat_request(request)
+UI -> Supervisor: message/send (session_id, message)
+note right: session_id is UI-generated (localStorage)
 
-Usecase -> Persistence : check_and_reserve_idempotency(request_id)
-Persistence -> Redis : SET NX (Idempotency)
-Redis --> Persistence : Success
-Persistence --> Usecase : is_new=True, task_id
+Supervisor -> API : POST /a2a/subagent (SendMessage)
+note right: session_id must be propagated in params
+activate API
 
-Usecase -> Redis : enqueue (task_id, payload)
-Redis --> Usecase : OK
+API -> UseCase : handle_chat_request(session_id, message)
+activate UseCase
 
-Usecase --> API : Accepted (task_id, status=ACCEPTED)
-API --> Supervisor : HTTP 202 Accepted / JSON-RPC Initial Response
+UseCase -> Persistence : check_and_reserve_idempotency(request_id)
+Persistence --> UseCase : Success (New Task)
 
-note over Worker, Graph : Background Execution
+UseCase -> Persistence : save_task(initial_state)
+UseCase -> Queue : LPUSH (task_data)
+UseCase --> API : status: ACCEPTED, task_id: {id}
 
-Worker -> Redis : dequeue
-Redis --> Worker : task_context
+API --> Supervisor : JSON-RPC Response (Accepted)
+deactivate API
+deactivate UseCase
 
-Worker -> Executor : execute(task_context)
-Executor -> Graph : astream(initial_state)
+Supervisor --> UI: JSON-RPC Response (Accepted)
 
-loop for each node (Planning, Execution, Compose)
-    Graph -> Graph : Run Node Logic
-    Executor -> Redis : publish (progress/chunk)
-    Executor -> Persistence : update_task_status(task_id, status)
-end
+== Background Execution ==
 
-Graph --> Executor : Final State
-Executor -> Persistence : save_task(task_result)
-Persistence -> Redis : Update task_status & Save result
+Worker -> Queue : BRPOP
+Queue --> Worker : task_data
+
+Worker -> Executor : execute(session_id, task_id, message)
+activate Executor
+
+Executor -> Persistence : update_status(RUNNING)
+Executor -> Engine : execute(initial_state)
+activate Engine
+
+Engine -> Engine : LangGraph Workflow (Plan -> Exec -> Compose)
+Engine --> Executor : final_state
+deactivate Engine
+
+Executor -> Persistence : complete_task(result)
+Executor -> Persistence : save_message(ASSISTANT, answer)
+deactivate Executor
 
 @enduml
