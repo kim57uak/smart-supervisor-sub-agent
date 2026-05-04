@@ -104,6 +104,26 @@ interface ConversationStore {
   +save_message(session_id, message): None
 }
 
+interface VoiceAdapter {
+  +connect(): None
+  +send_audio(audio_data): None
+  +listen(): AsyncIterator[dict]
+  +close(): None
+}
+
+class OpenAiRealtimeAdapter {
+  -api_key: str
+  -model: str
+  +connect()
+  +send_audio(audio_data)
+  +listen()
+  +close()
+}
+
+class VoiceAdapterFactory {
+  {static} +create_adapter(provider): VoiceAdapter
+}
+
 ' --- Enums ---
 
 enum TaskState {
@@ -136,6 +156,8 @@ FrozenExecutionPlan "1" *-- "1" ExecutionConstraintSet
 ReviewedExecutionSnapshot "1" *-- "1" FrozenExecutionPlan
 PlanningService ..> FrozenExecutionPlan : generates
 HandoffPolicyService ..> FrozenRoutingStep : evaluates
+VoiceAdapter <|.. OpenAiRealtimeAdapter
+VoiceAdapterFactory ..> VoiceAdapter : creates
 
 note bottom of FrozenExecutionPlan
 Hash/verification rules:

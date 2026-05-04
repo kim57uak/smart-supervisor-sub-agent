@@ -85,14 +85,15 @@ sequenceDiagram
 | **S1-14** | `execution_consistency_coordinator.py :: transition_to_waiting_review` | **[Redis HSET]** 태스크 상태를 `WAITING_REVIEW`, `version`을 0으로 초기화하여 저장. | 상태영속화 |
 | **S1-15** | `execution_consistency_coordinator.py :: persist_snapshot` | 승인 시점에 재검증할 수 있도록 `request_hash`, `plan_hash`를 포함한 스냅샷 저장. | 스냅샷저장 |
 | **S1-16** | `task_queue_service.py :: enqueue_task` | 승인이 불필요한 경우 `Redis.lpush`를 통해 백그라운드 워커 큐(`supervisor:task_queue`)로 전송. | 큐잉 |
-| **S1-17** | `supervisor_agent_service.py :: _build_accepted_response` | 태스크 접수 완료 응답 생성. 승인 필요 시 `reason: HITL_REQUIRED` 포함. | 최종응답 |
+| **S1-17** | `openai_realtime_adapter.py :: _update_session` | **[Voice]** `prompts.yml`의 `stt-system` 지침을 로드하여 OpenAI Realtime 세션 설정. | 음성인식지침 |
+| **S1-18** | `supervisor_agent_service.py :: _build_accepted_response` | 태스크 접수 완료 응답 생성. 승인 필요 시 `reason: HITL_REQUIRED` 포함. | 최종응답 |
 
 ### [Part 2] Supervisor Agent: Consumer (Worker & Execution)
 
 | 단계 | 함수 (Function/Method) | 상세 로직 및 처리 내용 | 비고 |
 | :--- | :--- | :--- | :--- |
 | **S2-1** | `worker.py :: run_forever` | 다중 워커 프로세스를 기동하고 `_worker_loop` 비동기 태스크 실행. | 워커기동 |
-| **S2-2** | `task_queue_service.py :: dequeue_task` | **[Reliable Queue]** `brpoplpush`를 사용하여 작업을 획득하고 처리 중인 큐로 이동시켜 유실 방지. | 작업획득 |
+| **S2-2** | `task_queue_service.py :: dequeue_task` | **[Reliable Queue]** `brpoplpush`를 사용하여 작업을 획득. `socket_timeout`은 20s로 설정되어 안전한 대기 보장. | 작업획득 |
 | **S2-3** | `worker_execution_service.py :: _process_task` | 작업 유형 분류 및 실행 환경(Graph State) 초기화. | 실행준비 |
 | **S2-4** | `worker_execution_service.py :: _process_task` | **[Direct Answer Check]** 단순 질의의 경우 그래프 오케스트레이션 없이 즉시 LLM 답변 생성 모드로 진입. | 최적화경로 |
 | **S2-5** | `execution_consistency_coordinator.py :: start_approved_resume` | **[CAS 전이]** 태스크 상태를 `WAITING_REVIEW`에서 `RUNNING`으로 원자적 변경. 실패 시 즉시 중단. | 상태점검 |
@@ -142,16 +143,28 @@ sequenceDiagram
 | **A2-10** | `langgraph_factory.py :: _execute_tools` | 생성된 `plans` 리스트를 루프 돌며 순차적 실행 시작. | 루프제어 |
 | **A2-11** | `mcp_infrastructure.py :: get_session` | 도구 이름에 해당하는 MCP 서버의 `McpTransport` 인스턴스 획득. | 세션관리 |
 | **A2-12** | `mcp_infrastructure.py :: call("initialize")` | MCP 서버와 **[Handshake]** 수행. 프로토콜 버전 및 클라이언트 정보 교환. | MCP 규격 |
-| **A2-13** | `mcp_infrastructure.py :: notify("initialized")` | 초기화 완료 통지 전송. 서버가 도구 실행 준비를 마침. | 프로토콜 |
-| **A2-14** | `mcp_infrastructure.py :: call(tool_name)` | 실제 도구 파라미터를 JSON-RPC로 전송하여 비즈니스 로직 실행. | 도구실행 |
-| **A2-15** | `mcp_infrastructure.py :: _parse_sse_response` | 서버의 `data:` 스트림 또는 JSON 응답에서 결과 페이로드 추출. | 응답파싱 |
-| **A2-16** | `agent_progress_publisher.py :: publish` | 도구 실행 결과(`TOOL_RESULT`)를 Redis Stream에 발행. | 진행전파 |
-| **A2-17** | `langgraph_factory.py :: _finalize_context` | 실행 결과를 `Message(role=tool)` 형태로 히스토리에 추가하여 문맥 완성. | 결과통합 |
-| **A2-18** | `llm_adapters.py :: LlmComposer.stream_compose` | `compose-prompt-template`에 도구 실행 결과와 히스토리를 주입. | 답변준비 |
-| **A2-19** | `llm_adapters.py :: LlmComposer.stream_compose` | **[LLM Stream 호출]** 실행 결과를 바탕으로 사용자에게 줄 최종 답변 생성. | 결과합성 |
-| **A2-20** | `agent_progress_publisher.py :: publish` | 생성된 텍스트 청크(`CHUNK`)를 실시간으로 Redis Stream에 발행. | 스트리밍 |
-| **A2-21** | `redis_adapter.py :: complete_task` | 최종 결과물과 상태(`COMPLETED`)를 Redis에 영구 저장. | 최종영속화 |
+| **A2-13** | `mcp_infrastructure.py :: call(tool_name)` | 실제 도구 파라미터를 JSON-RPC로 전송하여 비즈니스 로직 실행. | 도구실행 |
+| **A2-14** | `mcp_infrastructure.py :: _parse_sse_response` | 서버의 `data:` 스트림 또는 JSON 응답에서 결과 페이로드 추출. | 응답파싱 |
+| **A2-15** | `agent_progress_publisher.py :: publish` | 도구 실행 결과(`TOOL_RESULT`)를 Redis Stream에 발행. | 진행전파 |
+| **A2-16** | `langgraph_factory.py :: _finalize_context` | 실행 결과를 `Message(role=tool)` 형태로 히스토리에 추가하여 문맥 완성. | 결과통합 |
+| **A2-17** | `llm_adapters.py :: LlmComposer.stream_compose` | `compose-prompt-template`에 도구 실행 결과와 히스토리를 주입. | 답변준비 |
+| **A2-18** | `llm_adapters.py :: LlmComposer.stream_compose` | **[LLM Stream 호출]** 실행 결과를 바탕으로 사용자에게 줄 최종 답변 생성. | 결과합성 |
+| **A2-19** | `agent_progress_publisher.py :: publish` | 생성된 텍스트 청크(`CHUNK`)를 실시간으로 Redis Stream에 발행. | 스트리밍 |
+| **A2-20** | `redis_adapter.py :: complete_task` | 최종 결과물과 상태(`COMPLETED`)를 Redis에 영구 저장. | 최종영속화 |
 
+---
+
+### [Part 4] Voice Integrated Orchestration (Pattern 3 Standard)
+
+| 단계 | 파일/함수 | 상세 로직 및 처리 내용 | 비고 |
+| :--- | :--- | :--- | :--- |
+| **V1-1** | `api/supervisor.py :: websocket_voice_stream` | 브라우저로부터 오디오 스트림 수신. `session_id` 쿼리 파라미터 바인딩. | 음성진입점 |
+| **V1-2** | `openai_realtime_adapter.py :: send_audio` | 수신된 PCM16 바이너리를 OpenAI Realtime API 규격에 맞춰 Base64로 인코딩 후 전송. | 오디오전달 |
+| **V1-3** | `openai_realtime_adapter.py :: listen` | OpenAI로부터 실시간 전사 데이터(`text.delta`)를 수신하여 UI에 에코(Echo) 전송. | 실시간피드백 |
+| **V1-4** | `api/supervisor.py :: send_loop` | **[Final Transcript 수신]** OpenAI의 최종 전사 완료 이벤트를 감지. | 인식완료 |
+| **V1-5** | `supervisor_agent_service.py :: execute_task` | **[Server-Side Trigger]** 인식된 텍스트를 사용하여 즉시 에이전트 태스크 실행 트리거. | 통합오케스트레이션 |
+| **V1-6** | `api/supervisor.py :: send_loop` | 생성된 `task_id`를 WebSocket을 통해 브라우저로 전송 (`task_started: true`). | 핸드셰이크 |
+| **V1-7** | `app.js :: onVoiceTaskStarted` | 브라우저가 `task_id`를 수신하면 즉시 SSE 구독 모드로 전환하여 실시간 진행상황 표시. | SSE연결 |
 
 ---
 
@@ -161,7 +174,8 @@ sequenceDiagram
 - **HITL Policy Gate**: `llm_planning_service.py`에서 LLM이 `reviewRequired: true`를 반환할 경우, 작업을 중단하고 사용자의 `Decision (APPROVE/CANCEL)`을 대기.
 - **Circuit Breaker Gate**: `default_a2a_invocation.py`에서 특정 에이전트 호출 실패가 임계값(`failure-threshold`)을 넘으면 일정 시간(`open-duration-ms`) 동안 호출을 즉시 차단.
 - **A2UI Rendering Gate**: `llm_compose_service.py`에서 서브에이전트 응답에 `a2ui` 필드가 감지되면, 긴 텍스트 요약 대신 즉시 UI를 렌더링하고 스트림을 종료.
+- **Voice-to-Task Gate**: `supervisor.py` WebSocket 핸들러에서 최종 전사가 완료되는 즉시 브라우저를 거치지 않고 서버 내부에서 태스크를 실행하여 지연 시간 최소화.
 
 ---
-**Document Status**: 🔴 Ultra-Detailed / Finalized
-**Last Refined**: 2026-04-30
+**Document Status**: 🔴 Ultra-Detailed / Finalized (Pattern 3 Applied)
+**Last Refined**: 2026-05-04

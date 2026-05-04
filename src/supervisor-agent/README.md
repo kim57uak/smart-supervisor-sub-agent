@@ -30,11 +30,15 @@
 - **Global CAS Transition**: 모든 상태 전이(`WAITING_REVIEW`, `RUNNING`, `COMPLETED`, `CANCELED`)에 Redis `WATCH/MULTI` 기반의 Compare-And-Set 로직이 적용되어 분산 환경에서의 경합을 완벽히 차단합니다.
 - **Version Control**: 모든 Task 레코드는 `version` 필드를 통해 변경 이력을 관리하며, 충돌 시 `STATE_VERSION_MISMATCH`를 반환합니다.
 
-### 3. Review Security & Integrity (Doc 31)
-- **Frozen Plan Hash Verification**: 승인 시점에 `FrozenExecutionPlan`의 해시값을 재계산하여 계획 변조 여부를 7단계 정밀 검증합니다.
-- **Drift Policy Enforcement**: 계획이 수립된 시점과 승인된 시점 사이의 환경 변화(Agent 차단, 메서드 은퇴 등)를 감지하여 실행을 차단합니다.
+### 3. Voice Integrated Orchestration (Pattern 3)
+- **Server-Side Trigger**: 음성 인식이 완료되는 즉시 서버 사이드에서 에이전트 작업을 직접 실행하여 지연 시간을 0으로 수렴시킵니다.
+- **Real-time Echo/Transcript**: OpenAI Realtime API의 전사 데이터와 에이전트의 사고 과정을 실시간으로 스트리밍하여 시각적 피드백을 제공합니다.
 
-### 4. Self-healing Discovery (A2A Standard)
+### 4. Robust Infrastructure & Prompts
+- **Redis Stability**: `BRPOPLPUSH` 대기 시간을 고려하여 소켓 타임아웃을 20초로 상향 조정, 분산 환경에서의 안정성을 확보했습니다.
+- **Centralized Prompting**: `prompts.yml`을 통해 시스템 지침 및 STT 전용 프롬프트를 중앙에서 관리하여 일관된 에이전틱 동작을 보장합니다.
+
+### 5. Self-healing Discovery (A2A Standard)
 - **Canonical Path Alignment**: 모든 서브에이전트 탐색은 `/.well-known/agent-card.json` 표준 경로를 통해 수행됩니다.
 - **Lifespan Discovery**: 슈퍼바이저 기동 시 `asynccontextmanager`를 통해 서브에이전트 정보를 선제적으로 로드합니다.
 - **Lazy Fallback**: 기동 시점에 서브에이전트가 오프라인이더라도 재탐색을 시도하는 자가 치유 로직이 적용되어 있습니다.
@@ -59,18 +63,18 @@
 ### 실행 방법
 ```bash
 # API 서버 및 워커 동시 기동
-rtk ./start.sh
+./start.sh
 
 # 개별 실행 시
-rtk uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers <API_WORKERS>
-rtk python worker.py --concurrency <WORKER_COUNT>
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers <API_WORKERS>
+python worker.py --concurrency <WORKER_COUNT>
 ```
 
 ### 📊 에이전트 실행 시각화 (Burr UI)
 Burr 엔진을 사용하는 경우, 다음 명령어로 에이전트의 상태 머신과 실행 이력을 실시간으로 모니터링할 수 있습니다.
 ```bash
 # Burr UI 서버 기동 (기본 포트: 7241)
-rtk burr
+burr
 ```
 접속 주소: [http://localhost:7241](http://localhost:7241)
 
@@ -95,7 +99,7 @@ rtk burr
 ```bash
 cd src/supervisor-agent
 export PYTHONPATH=$PYTHONPATH:.
-rtk pytest tests/integration_test.py
+pytest tests/integration_test.py
 ```
 
 ---

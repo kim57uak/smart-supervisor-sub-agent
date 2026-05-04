@@ -8,10 +8,15 @@ class RedisClient:
     @classmethod
     async def get_client(cls) -> redis.Redis:
         if cls._instance is None:
+            # Rationale (Why): Explicitly managing connection pool prevents exhaustion in high-traffic scenarios.
             cls._instance = redis.from_url(
                 settings.redis_url,
                 encoding="utf-8",
-                decode_responses=True
+                decode_responses=True,
+                max_connections=20, # Managed pool size
+                socket_timeout=20.0, # Rationale (Why): Must be greater than blocking command timeouts (e.g. 10s in dequeue)
+                socket_connect_timeout=10.0,
+                health_check_interval=30 # Keep-alive check
             )
         return cls._instance
 

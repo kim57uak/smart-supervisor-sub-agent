@@ -1,12 +1,12 @@
 import asyncio
 import json
 import uuid
-from typing import Union, AsyncIterator
-from fastapi import APIRouter, Request, HTTPException, Depends
+from typing import Union, AsyncIterator, Optional
+from fastapi import APIRouter, Request, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 
-from ..schemas.jsonrpc import JsonRpcRequest, JsonRpcResponse, JsonRpcError
-from ..schemas.supervisor import (
+from app.schemas.jsonrpc import JsonRpcRequest, JsonRpcResponse, JsonRpcError
+from app.schemas.supervisor import (
     SendMessageParams, 
     ReviewDecideRequest, 
     ReviewApproveAck, 
@@ -14,20 +14,21 @@ from ..schemas.supervisor import (
     TaskEventsParams,
     CancelTaskRequest
 )
-from ..domain.enums import (
+from app.domain.enums import (
     Decision, ExecutionMode, ReasonCode, TaskState, EventType,
     ApiMethod, RpcErrorCode, ProcessStatus
 )
-from ..core.dependencies import (
+from app.core.dependencies import (
     get_validator,
     get_translator,
     get_supervisor_agent_service,
     get_event_service
 )
-from ..core.config import settings
+from app.core.config import settings
+from app.adapters.llm.voice_adapter_factory import VoiceAdapterFactory
 
 import structlog
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
@@ -98,8 +99,9 @@ async def handle_supervisor_request(
     # 3. tasks/review/get | GetReview
     elif method in [ApiMethod.REVIEW_GET.value, ApiMethod.REVIEW_GET_LEGACY.value]:
         session_id = request_data.params.get("session_id")
-        if not session_id:
-            return translator.to_rpc_error(request_data.id, RpcErrorCode.INVALID_PARAMS.value, "session_id is required")
+        task_id = request_data.params.get("task_id")
+        if not session_id or not task_id:
+            return translator.to_rpc_error(request_data.id, RpcErrorCode.INVALID_PARAMS.value, "session_id and task_id are required")
         snapshot = await agent_service.read_facade.get_snapshot(session_id, task_id)
         if not snapshot:
             return translator.to_rpc_error(
@@ -174,3 +176,79 @@ async def handle_supervisor_stream(
         return StreamingResponse(event_generator(), media_type="text/event-stream")
     
     raise HTTPException(status_code=400, detail="Invalid stream method")
+
+
+@router.websocket("/voice/stream")
+async def websocket_voice_stream(
+    websocket: WebSocket,
+    session_id: str,
+    agent_service=Depends(get_supervisor_agent_service)
+):
+    """
+    브라우저에서 오는 실시간 오디오 스트림을 수신하고, 
+    텍스트 변환 완료 시 서버에서 즉시 에이전트 작업을 트리거합니다 (Doc 20/23).
+    """
+    await websocket.accept()
+    
+    try:
+        logger.info("voice_websocket_connected", session_id=session_id, client_host=websocket.client.host)
+        adapter = VoiceAdapterFactory.create_adapter()
+    except Exception as e:
+        logger.error("voice_adapter_creation_failed", error=str(e))
+        await websocket.send_json({"type": "error", "message": "Voice provider not available"})
+        await websocket.close()
+        return
+    
+    try:
+        await adapter.connect()
+        
+        async def receive_loop():
+            try:
+                # Rationale (Why): iter_bytes is cleaner for binary streaming.
+                chunk_count = 0
+                async for message in websocket.iter_bytes():
+                    chunk_count += 1
+                    await adapter.send_audio(message)
+            except WebSocketDisconnect:
+                logger.info("voice_receive_loop_disconnected")
+            except Exception as e:
+                if "disconnect" not in str(e).lower():
+                    logger.error("voice_receive_loop_failed", error=str(e))
+
+        async def send_loop():
+            try:
+                async for event in adapter.listen():
+                    # Rationale (Why): Server-side orchestration triggers task immediately after STT.
+                    if event.get("type") == "final_transcript":
+                        transcript = event.get("text")
+                        if transcript:
+                            request_id = str(uuid.uuid4())
+                            logger.info("voice_stt_completed_triggering_task", session_id=session_id, transcript=transcript)
+                            
+                            # Trigger the same logic as POST /tasks
+                            result = await agent_service.execute_task(session_id, transcript, request_id)
+                            
+                            # Notify client that task has started on server
+                            event["task_started"] = True
+                            event["task_id"] = result.get("task_id")
+                            event["status"] = result.get("status")
+                    
+                    await websocket.send_json(event)
+            except WebSocketDisconnect:
+                logger.info("voice_send_loop_disconnected")
+            except Exception as e:
+                if "disconnect" not in str(e).lower():
+                    logger.error("voice_send_loop_failed", error=str(e))
+
+        # Run receive and send in parallel to avoid blocking.
+        await asyncio.gather(receive_loop(), send_loop())
+                
+    except Exception as e:
+        if "disconnect" not in str(e).lower():
+            logger.error("voice_websocket_failed", error=str(e))
+    finally:
+        await adapter.close()
+        try:
+            await websocket.close()
+        except:
+            pass

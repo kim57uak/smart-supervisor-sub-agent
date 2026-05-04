@@ -17,6 +17,8 @@ from app.api import supervisor
 from app.infrastructure.redis.redis_client import RedisClient
 from app.adapters.llm.llm_planning_service import LlmPlanningService
 
+logger = structlog.get_logger()
+
 def create_app():
     # Configure Structured Logging
     structlog.configure(
@@ -33,7 +35,7 @@ def create_app():
         try:
             asyncio.create_task(LlmPlanningService.load_agent_cards())
         except Exception as e:
-            print(f"Discovery initialization failed: {e}")
+            logger.error("discovery_initialization_failed", error=str(e))
         yield
         # Shutdown logic if any
 

@@ -35,11 +35,6 @@ class BurrAdapter(OrchestrationEngine):
             .with_state(**state_to_inject)
             .build()
         )
-
-
-        
-
-
         
         # Rationale (Why): Burr's arun() returns the final result and state.
         last_action, result, state = await app.arun(
@@ -50,6 +45,3 @@ class BurrAdapter(OrchestrationEngine):
         
         # Rationale (Why): Burr State can be converted to a dictionary using .get_all().
         return state.as_dict() if hasattr(state, "as_dict") else dict(state.items())
-
-
-

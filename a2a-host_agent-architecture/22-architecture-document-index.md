@@ -30,7 +30,9 @@ Updated: 2026-04-28 (Implementation Refined)
 ### 4. 구현 및 데이터 명세 (Detailed Specs)
 - `15` Usecase Mapping (기능별 런타임 매핑)
 - `18` Domain Pseudocode (핵심 비즈니스 로직 의사코드)
+- `20` Routing Spec (라우팅 패키지 명세)
 - `31` FrozenExecutionPlan Schema (동결 계획 데이터 규격)
+- `33` Voice Integrated Orchestration (음성 통합 오케스트레이션 시퀀스)
 
 ## Maintenance Rule
 

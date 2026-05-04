@@ -36,23 +36,23 @@
 ### 실행 방법
 ```bash
 # 서버 기동
-rtk ./start.sh
+./start.sh
 
 # 서버 중지
-rtk ./stop.sh
+./stop.sh
 
 # 개별 실행 시
-rtk uvicorn app.main:app --host 0.0.0.0 --port 8082 --workers <API_WORKERS>
-rtk python worker.py --concurrency <WORKER_COUNT>
+uvicorn app.main:app --host 0.0.0.0 --port 8082 --workers <API_WORKERS>
+python worker.py --concurrency <WORKER_COUNT>
 
 # 정상 작동 확인
-rtk ./verify_subagent.sh
+./verify_subagent.sh
 
 ### 📊 에이전트 실행 시각화 (Burr UI)
 Burr 엔진을 사용하는 경우, 에이전트의 상태 전이 과정을 시각적으로 확인할 수 있습니다.
 ```bash
 # Burr UI 서버 기동 (기본 포트: 7241)
-rtk burr
+burr
 ```
 접속 주소: [http://localhost:7241](http://localhost:7241)
 ```
@@ -103,4 +103,4 @@ rtk burr
 ---
 
 ## ✅ 검증 (Verification)
-`rtk pytest src/sub-agent/tests/integration_test.py`를 실행하여 기본적인 A2A 통신 및 도구 실행 로직이 정상인지 확인할 수 있습니다.
+`pytest src/sub-agent/tests/integration_test.py`를 실행하여 기본적인 A2A 통신 및 도구 실행 로직이 정상인지 확인할 수 있습니다.

@@ -15,7 +15,12 @@ class RedisAdapter(Store, TaskQueue, ProgressPublisher):
     Implements Document 01 (System Context) and Document 12/16/20 (Centralized Redis Management).
     """
     def __init__(self, redis_url: str):
-        self.client = redis.from_url(redis_url, decode_responses=True)
+        self.client = redis.from_url(
+            redis_url, 
+            decode_responses=True,
+            socket_timeout=20.0,
+            socket_connect_timeout=10.0
+        )
         
         # Get config from centralized settings
         agent_settings = settings.agent
@@ -26,6 +31,7 @@ class RedisAdapter(Store, TaskQueue, ProgressPublisher):
         
         # Rationale (Why): Queue key must match exactly with Document 12 for multi-node compatibility.
         self.queue_key = f"{self.base_prefix}subagent:task_queue"
+        self.processing_key = f"{self.base_prefix}subagent:task_processing"
         self.task_prefix = f"{self.base_prefix}{prefixes.task}:"
         self.idempotency_prefix = f"{self.base_prefix}{prefixes.idempotency}:"
         self.event_stream_prefix = f"{self.base_prefix}{prefixes.events}:"
@@ -111,13 +117,24 @@ class RedisAdapter(Store, TaskQueue, ProgressPublisher):
         # Rationale (Why): LPUSH for FIFO processing in Worker.
         await self.client.lpush(self.queue_key, json.dumps(task_data))
 
-    async def dequeue(self) -> Optional[Dict[str, Any]]:
-        # Rationale (Why): BRPOP provides efficient blocking wait for tasks (Document 12).
-        result = await self.client.brpop(self.queue_key, timeout=1)
+    async def dequeue(self, timeout: int = 10) -> Optional[Dict[str, Any]]:
+        # Rationale (Why): BRPOPLPUSH provides atomic "Reliable Queue" behavior, preventing task loss (Doc 01).
+        result = await self.client.brpoplpush(self.queue_key, self.processing_key, timeout=timeout)
         if result:
-            _, data = result
-            return json.loads(data)
+            return json.loads(result)
         return None
+
+    async def ack(self, task_data: Dict[str, Any]) -> None:
+        # Rationale (Why): Explicitly remove task from processing queue upon completion.
+        await self.client.lrem(self.processing_key, 1, json.dumps(task_data))
+
+    async def nack(self, task_data: Dict[str, Any]) -> None:
+        # Rationale (Why): Re-enqueue task from processing back to main queue for retry.
+        msg_json = json.dumps(task_data)
+        async with self.client.pipeline() as pipe:
+            await pipe.lrem(self.processing_key, 1, msg_json)
+            await pipe.lpush(self.queue_key, msg_json)
+            await pipe.execute()
 
     # --- ProgressPublisher Implementation ---
 

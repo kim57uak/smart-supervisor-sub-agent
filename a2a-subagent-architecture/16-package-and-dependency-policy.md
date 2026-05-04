@@ -1,10 +1,10 @@
 # 16. Package And Dependency Policy
 
-Updated: 2026-04-29 (Independence & Class Sync)
+Updated: 2026-05-04 (Class Sync)
 
 ## Base Package
 
-- `app` (at src/sub-agent/app)
+- `app` (at `src/sub-agent/app`)
 
 ## Folder Structure (Hexagonal + CQRS)
 
@@ -13,15 +13,15 @@ Updated: 2026-04-29 (Independence & Class Sync)
 - `app/adapters`: Implementation of Ports (Stores, LLM, MCP, Orchestration)
 - `app/api`: FastAPI Routers (agent, a2a, support)
 - `app/application`: Business Logic
-    - `execution`: Usecases, Worker, Progress Publishing (AgentChatUseCase, AgentExecutor)
-    - `persistence`: Atomic state transitions (AgentPersistence, StateCoordinator)
-    - `read`: Read-only facades and queries (AgentReader)
-- `app/ports`: Abstract Interface Definitions (interfaces.py)
-- `app/domain`: Entities, Value Objects, Enums (models.py, enums.py)
-- `app/infrastructure`: Low-level clients (RedisClient, LlmRuntime)
+    - `execution`: Usecases, Worker, Progress Publishing (`AgentChatUseCase`, `AgentExecutor`, `WorkerExecutionService`)
+    - `persistence`: Atomic state transitions (`AgentPersistence`, `ExecutionConsistencyCoordinator`)
+    - `read`: Read-only facades and queries (`AgentReader`)
+- `app/ports`: Abstract Interface Definitions (`interfaces.py`)
+- `app/domain`: Entities, Value Objects, Enums (`models.py`, `enums.py`)
+- `app/infrastructure`: Low-level clients (`RedisClient`, `LlmRuntime`)
 - `app/common`: Shared utilities
 - `app/schemas`: Pydantic Request/Response schemas
-- `app/services`: Domain services (AgentAuthorizationService)
+- `app/services`: Domain services (`AgentAuthorizationService`)
 
 ## Independence & Environment Policy
 

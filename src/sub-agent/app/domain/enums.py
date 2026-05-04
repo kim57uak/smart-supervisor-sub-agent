@@ -41,3 +41,18 @@ class RedisNamespace(Enum):
     IDEMPOTENCY = "subagent:idempotency"
     EVENTS = "subagent:events"
     QUEUE = "subagent:task_queue"
+
+class JsonRpcErrorCode(Enum):
+    """
+    JSON-RPC 2.0 Standard Error Codes.
+    Rationale (Why): Centralized error management ensures protocol consistency across all agent endpoints.
+    """
+    PARSE_ERROR = -32700
+    INVALID_REQUEST = -32600
+    METHOD_NOT_FOUND = -32601
+    INVALID_PARAMS = -32602
+    INTERNAL_ERROR = -32603
+    
+    # Custom Agent Errors
+    AGENT_BASE_ERROR = -32000
+    UNAUTHORIZED = -32001

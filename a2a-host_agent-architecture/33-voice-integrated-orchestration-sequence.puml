@@ -1,0 +1,71 @@
+@startuml
+title [Pattern 3] Voice Integrated Orchestration Sequence (A2A Standard)
+
+skinparam sequence {
+    ArrowColor #3B82F6
+    LifeLineBorderColor #3B82F6
+    ParticipantBorderColor #3B82F6
+    BackgroundColor #F8FAFC
+}
+
+participant "User / Browser" as User
+participant "UI (voice.js/app.js)" as UI
+participant "Supervisor API\n(FastAPI)" as API
+participant "Agent Service\n(Orchestrator)" as Agent
+participant "OpenAI Realtime API\n(WSS)" as OpenAI
+
+== 1. Session Initialization ==
+
+User -> UI : 마이크 버튼 클릭
+activate UI
+UI -> API : WS Connection /a2a/supervisor/voice/stream?session_id=UUID
+activate API
+
+API -> OpenAI : WSS Connection (PCM16, 24kHz)
+OpenAI --> API : Session Started
+API -> OpenAI : session.update (stt-system prompt)
+API --> UI : WebSocket Accept
+
+== 2. Audio Streaming & Real-time Transcription ==
+
+loop Voice Activity
+    User -> UI : 음성 입력 (Voice Speaking)
+    UI -> API : Binary (Audio Chunks)
+    API -> OpenAI : input_audio_buffer.append
+    
+    OpenAI --> API : response.text.delta (Real-time Echo)
+    API --> UI : { "type": "transcript", "text": "..." }
+    UI -> UI : Overlay 업데이트
+end
+
+== 3. Server-Side Integrated Orchestration (Pattern 3) ==
+
+OpenAI --> API : input_audio_transcription.completed (Final Text)
+activate API #LightBlue
+
+note right of API: 서버가 직접 태스크 트리거 (패턴 3)
+API -> Agent : execute_task(session_id, transcript, request_id)
+activate Agent
+Agent -> Agent : Task Created (Accepted/Streaming)
+Agent --> API : { "task_id": "T-123", "status": "STREAMING" }
+deactivate Agent
+
+API --> UI : { "type": "final_transcript", "text": "...", "task_started": true, "task_id": "T-123" }
+deactivate API
+
+== 4. Seamless SSE Subscription ==
+
+UI -> UI : stopVoice() & UI 전환
+UI -> API : POST /a2a/supervisor/stream (SSE Subscription for T-123)
+activate API
+
+loop Task Execution Events
+    Agent -> API : Event (analyzing/planning/invoking...)
+    API --> UI : SSE Event (progress/chunk/reasoning)
+    UI -> UI : Chat Bubble & Progress 업데이트
+end
+
+API --> UI : SSE Event (done)
+deactivate API
+
+@enduml
