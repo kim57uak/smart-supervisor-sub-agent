@@ -38,24 +38,30 @@
 
 ## 🛠️ 시작하기 (Quick Start)
 
-### 1. 환경 설정
+### 1. 가상환경 및 의존성 구축
+모든 서비스는 프로젝트 루트의 통합 가상환경(`.venv`)에서 실행하는 것을 권장합니다. **Supervisor**의 의존성을 기준으로 환경을 구축합니다.
+
 ```bash
-# 가상환경 구축 및 의존성 설치
-rtk python3 -m venv .venv
+# 1. 가상환경 생성 (프로젝트 루트에서 실행)
+python3 -m venv .venv
+
+# 2. 가상환경 활성화
 source .venv/bin/activate
-rtk pip install -r requirements.txt
+
+# 3. 슈퍼바이저 기준 의존성 설치 (루트에서 실행)
+pip install -r src/supervisor-agent/requirements.txt
 ```
 
 ### 2. 서비스 기동
 ```bash
-# Supervisor 및 Sub-Agent 통합 실행
-rtk ./start_all.sh
+# Supervisor 및 Sub-Agent 통합 실행 (start_all.sh 내부에서 venv 자동 참조)
+./start_all.sh
 ```
 
 ### 3. 기능 검증
 ```bash
 # 전체 파이프라인 E2E 검증
-rtk python verify_session_id_e2e.py
+python verify_session_id_e2e.py
 ```
 
 ---
