@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional
 from ...ports.interfaces import Store
 from ...domain.models import AgentTask, AgentExecutionResult
 from ...domain.enums import ProcessStatus
-from .execution_consistency_coordinator import StateCoordinator
+from .execution_consistency_coordinator import ExecutionConsistencyCoordinator
 
 class AgentPersistence:
     """
@@ -10,7 +10,7 @@ class AgentPersistence:
     """
     def __init__(self, store: Store):
         self.store = store
-        self.state = StateCoordinator(store)
+        self.state = ExecutionConsistencyCoordinator(store)
 
     async def complete_task(self, task_id: str, result: AgentExecutionResult) -> bool:
         # Rationale (Why): Using atomic_transition to ensure no race conditions during completion.

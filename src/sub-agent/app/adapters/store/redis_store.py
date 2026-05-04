@@ -45,33 +45,52 @@ class RedisAdapter(Store, TaskQueue, ProgressPublisher):
         result = await self.client.set(key, task_id, nx=True, ex=self.ttl)
         return bool(result)
 
-    async def save_task(self, task: AgentTask) -> None:
+    async def save_task(self, task: AgentTask, max_retries: int = 5) -> None:
         """
-        Saves task state with optimistic locking (Document 20).
+        Saves task state with robust optimistic locking (Document 20).
+        Uses a retry loop and pipelined WATCH/GET/MULTI/EXEC pattern.
         """
         key = f"{self.task_prefix}{task.task_id}"
+        retries = 0
         
-        async with self.client.pipeline() as pipe:
-            try:
-                # Rationale (Why): WATCH ensures that we don't overwrite if another worker updated it.
-                await pipe.watch(key)
-                
-                # Check current version if exists
-                current_data = await self.client.get(key)
-                if current_data:
-                    current_task = AgentTask.model_validate_json(current_data)
-                    if task.state_version <= current_task.state_version:
-                        # Version conflict
-                        logger.warning("optimistic_locking_conflict", task_id=task.task_id)
-                        raise ValueError("State version conflict")
+        while retries < max_retries:
+            async with self.client.pipeline(transaction=True) as pipe:
+                try:
+                    # Rationale (Why): WATCH ensures that we don't overwrite if another worker updated it.
+                    await pipe.watch(key)
+                    
+                    # Rationale (Why): We MUST use the pipelined connection for GET to ensure 
+                    # it happens within the context of the WATCH on the same connection.
+                    current_data = await pipe.get(key)
+                    
+                    if current_data:
+                        current_task = AgentTask.model_validate_json(current_data)
+                        if task.state_version < current_task.state_version:
+                            # Version conflict: current state is newer than what we're trying to save
+                            logger.warning("optimistic_locking_conflict", 
+                                           task_id=task.task_id, 
+                                           our_version=task.state_version, 
+                                           current_version=current_task.state_version)
+                            raise ValueError(f"State version conflict for {task.task_id}")
+                        
+                        # Note: If versions are equal, we proceed with the update (idempotent save).
+                    
+                    pipe.multi()
+                    pipe.set(key, task.model_dump_json(), ex=self.ttl)
+                    await pipe.execute()
+                    return # Success
+                    
+                except redis.WatchError:
+                    # Rationale (Why): Concurrent modification detected. Retry until max_retries.
+                    retries += 1
+                    logger.info("redis_watch_error_retrying", task_id=task.task_id, attempt=retries)
+                    await asyncio.sleep(0.1 * retries) # Exponential-ish backoff
+                    continue
+                except Exception as e:
+                    logger.error("save_task_failed", task_id=task.task_id, error=str(e))
+                    raise
 
-                pipe.multi()
-                pipe.set(key, task.model_dump_json(), ex=self.ttl)
-                await pipe.execute()
-                
-            except redis.WatchError:
-                logger.error("redis_watch_error", task_id=task.task_id)
-                raise
+        raise RuntimeError(f"Failed to save task {task.task_id} after {max_retries} attempts due to conflicts")
 
     async def load_task(self, task_id: str) -> Optional[AgentTask]:
         key = f"{self.task_prefix}{task_id}"
