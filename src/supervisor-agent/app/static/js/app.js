@@ -909,13 +909,23 @@
 
   /**
    * Rationale (Why): Server-side voice orchestration calls this when task starts.
+   * Handles both immediate streaming and HITL (review required) scenarios.
    */
-  async function onVoiceTaskStarted(taskId, transcript) {
+  async function onVoiceTaskStarted(taskId, transcript, status, reviewReason) {
     if (streaming) return;
     addMessage('user', transcript.replace(/\n/g, '<br>'));
     streaming = true;
     abortController = new AbortController();
     const ai = createAiResponseShell();
+
+    if (status === "WAITING_REVIEW") {
+        activeStreamTaskId = taskId;
+        showHitlReviewPanel(ai, reviewReason || '사용자 승인이 필요합니다.', taskId);
+        setStatus('사용자 승인 대기 중', 'pending');
+        streaming = false; // Stop initial loading state, wait for user action
+        return;
+    }
+
     await startSseSubscription(ai, taskId);
   }
 

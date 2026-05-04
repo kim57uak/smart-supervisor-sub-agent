@@ -163,8 +163,8 @@ sequenceDiagram
 | **V1-3** | `openai_realtime_adapter.py :: listen` | OpenAI로부터 실시간 전사 데이터(`text.delta`)를 수신하여 UI에 에코(Echo) 전송. | 실시간피드백 |
 | **V1-4** | `api/supervisor.py :: send_loop` | **[Final Transcript 수신]** OpenAI의 최종 전사 완료 이벤트를 감지. | 인식완료 |
 | **V1-5** | `supervisor_agent_service.py :: execute_task` | **[Server-Side Trigger]** 인식된 텍스트를 사용하여 즉시 에이전트 태스크 실행 트리거. | 통합오케스트레이션 |
-| **V1-6** | `api/supervisor.py :: send_loop` | 생성된 `task_id`를 WebSocket을 통해 브라우저로 전송 (`task_started: true`). | 핸드셰이크 |
-| **V1-7** | `app.js :: onVoiceTaskStarted` | 브라우저가 `task_id`를 수신하면 즉시 SSE 구독 모드로 전환하여 실시간 진행상황 표시. | SSE연결 |
+| **V1-6** | `api/supervisor.py :: send_loop` | 생성된 `task_id` 및 `status`, `review_reason`을 WebSocket을 통해 브라우저로 전송. | 핸드셰이크 |
+| **V1-7** | `app.js :: onVoiceTaskStarted` | **[HITL Check]** `status`가 `WAITING_REVIEW`이면 즉시 리뷰 패널을 표시, 아니면 SSE 구독. | 조건부UI전환 |
 
 ---
 

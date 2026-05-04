@@ -46,26 +46,35 @@ activate API #LightBlue
 note right of API: 서버가 직접 태스크 트리거 (패턴 3)
 API -> Agent : execute_task(session_id, transcript, request_id)
 activate Agent
-Agent -> Agent : Task Created (Accepted/Streaming)
-Agent --> API : { "task_id": "T-123", "status": "STREAMING" }
+Agent -> Agent : Planning & HITL Evaluation
+Agent --> API : { "task_id": "T-123", "status": "STREAMING/WAITING_REVIEW" }
 deactivate Agent
 
-API --> UI : { "type": "final_transcript", "text": "...", "task_started": true, "task_id": "T-123" }
+API --> UI : { "type": "final_transcript", "text": "...", "task_started": true, "task_id": "T-123", "status": "..." }
 deactivate API
 
-== 4. Seamless SSE Subscription ==
+== 4. Conditional Workflow Transition ==
 
 UI -> UI : stopVoice() & UI 전환
-UI -> API : POST /a2a/supervisor/stream (SSE Subscription for T-123)
-activate API
 
-loop Task Execution Events
-    Agent -> API : Event (analyzing/planning/invoking...)
-    API --> UI : SSE Event (progress/chunk/reasoning)
-    UI -> UI : Chat Bubble & Progress 업데이트
+alt status == "STREAMING"
+    UI -> API : POST /a2a/supervisor/stream (SSE Subscription)
+    activate API
+    loop Task Execution Events
+        Agent -> API : Event (analyzing/invoking...)
+        API --> UI : SSE Event (progress/chunk/reasoning)
+        UI -> UI : Chat Bubble 업데이트
+    end
+    API --> UI : SSE Event (done)
+    deactivate API
+else status == "WAITING_REVIEW"
+    UI -> UI : showHitlReviewPanel(review_reason)
+    User -> UI : [Approve] 버튼 클릭
+    UI -> API : POST /a2a/supervisor/review (JSON-RPC)
+    API -> Agent : resume_task(T-123)
+    API --> UI : { "status": "STREAMING" }
+    UI -> API : POST /a2a/supervisor/stream (SSE Subscription)
+    ... Standard SSE Flow ...
 end
-
-API --> UI : SSE Event (done)
-deactivate API
 
 @enduml

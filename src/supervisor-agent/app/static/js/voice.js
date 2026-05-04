@@ -102,7 +102,7 @@
           setTimeout(() => {
             stopVoice();
             if (msg.task_started && msg.task_id && window.onVoiceTaskStarted) {
-                window.onVoiceTaskStarted(msg.task_id, msg.text);
+                window.onVoiceTaskStarted(msg.task_id, msg.text, msg.status, msg.review_reason);
             } else if (window.send) {
                 // Fallback to legacy client-side send if server trigger failed
                 window.send();

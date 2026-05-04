@@ -232,12 +232,20 @@ async def websocket_voice_stream(
                             event["task_started"] = True
                             event["task_id"] = result.get("task_id")
                             event["status"] = result.get("status")
+                            event["review_reason"] = result.get("review_reason")
                     
-                    await websocket.send_json(event)
+                    # Rationale (Why): Check if client is still connected before sending.
+                    # Prevent "Unexpected ASGI message" error when client closes WS after receiving final_transcript.
+                    if websocket.client_state.name == "CONNECTED":
+                        await websocket.send_json(event)
+                    else:
+                        logger.info("voice_send_loop_skipping_send_closed")
+                        break
             except WebSocketDisconnect:
                 logger.info("voice_send_loop_disconnected")
             except Exception as e:
-                if "disconnect" not in str(e).lower():
+                # Suppress common race condition errors during disconnect
+                if "disconnect" not in str(e).lower() and "websocket.send" not in str(e).lower():
                     logger.error("voice_send_loop_failed", error=str(e))
 
         # Run receive and send in parallel to avoid blocking.
