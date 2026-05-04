@@ -204,11 +204,18 @@ async def websocket_voice_stream(
         
         async def receive_loop():
             try:
-                # Rationale (Why): iter_bytes is cleaner for binary streaming.
-                chunk_count = 0
-                async for message in websocket.iter_bytes():
-                    chunk_count += 1
-                    await adapter.send_audio(message)
+                # Rationale (Why): Handle both binary audio and JSON commands (e.g. manual commit).
+                while True:
+                    message = await websocket.receive()
+                    if "bytes" in message:
+                        await adapter.send_audio(message["bytes"])
+                    elif "text" in message:
+                        try:
+                            data = json.loads(message["text"])
+                            if data.get("type") == "commit":
+                                await adapter.commit()
+                        except json.JSONDecodeError:
+                            pass
             except WebSocketDisconnect:
                 logger.info("voice_receive_loop_disconnected")
             except Exception as e:

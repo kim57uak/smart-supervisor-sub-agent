@@ -47,34 +47,43 @@
     if (voiceTranscriptLarge) voiceTranscriptLarge.textContent = '목소리를 분석하고 있습니다...';
 
     try {
-      // Use standard Constraints for maximum compatibility
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      // 2. Start WebSocket and AudioContext in parallel with getUserMedia
+      const currentSessionId = (typeof window.getSessionId === 'function') ? window.getSessionId() : '';
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.host}/a2a/supervisor/voice/stream?session_id=${currentSessionId}`;
+      
+      const wsPromise = new Promise((resolve, reject) => {
+        const ws = new WebSocket(wsUrl);
+        ws.onopen = () => resolve(ws);
+        ws.onerror = (err) => reject(err);
+      });
+
+      const streamPromise = navigator.mediaDevices.getUserMedia({ 
           audio: {
               echoCancellation: true,
               noiseSuppression: true,
               autoGainControl: true
           } 
       });
-      microphoneStream = stream;
+
+      // Show connecting status
+      if (voiceTranscriptLarge) voiceTranscriptLarge.textContent = 'LLM 연결 중...';
+
+      const [stream, ws] = await Promise.all([streamPromise, wsPromise]);
       
-      // OpenAI Realtime expects 24kHz
+      microphoneStream = stream;
+      voiceWs = ws;
+      
       audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
       if (audioContext.state === 'suspended') {
         await audioContext.resume();
       }
 
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const currentSessionId = (typeof window.getSessionId === 'function') ? window.getSessionId() : '';
-      const wsUrl = `${wsProtocol}//${window.location.host}/a2a/supervisor/voice/stream?session_id=${currentSessionId}`;
-      voiceWs = new WebSocket(wsUrl);
-
-      voiceWs.onopen = async () => {
-        console.log('Voice WS connected', { session_id: currentSessionId });
-        voiceActive = true;
-        finalized = false;
-        if (voiceTranscriptLarge) voiceTranscriptLarge.textContent = '듣고 있습니다. 무엇을 도와드릴까요?';
-        await startAudioCapture(stream);
-      };
+      console.log('Voice WS connected', { session_id: currentSessionId });
+      voiceActive = true;
+      finalized = false;
+      if (voiceTranscriptLarge) voiceTranscriptLarge.textContent = '듣고 있습니다. 무엇을 도와드릴까요?';
+      await startAudioCapture(stream);
 
       voiceWs.onmessage = (event) => {
         const msg = JSON.parse(event.data);
@@ -116,7 +125,10 @@
       };
 
       voiceWs.onclose = () => { if (voiceActive) stopVoice(); };
-      voiceWs.onerror = () => stopVoice();
+      voiceWs.onerror = (err) => {
+        console.error('Voice WS Error', err);
+        stopVoice();
+      };
 
     } catch (err) {
       console.error('Voice Initialization error', err);
@@ -179,7 +191,11 @@
     const dataArray = new Uint8Array(bufferLength);
 
     const draw = () => {
-      if (!voiceActive) return;
+      if (!voiceActive) {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+        return;
+      }
       animationFrameId = requestAnimationFrame(draw);
 
       analyser.getByteFrequencyData(dataArray);
@@ -222,6 +238,10 @@
 
   function stopVoice() {
     voiceActive = false;
+    _cleanupVoiceResources();
+  }
+
+  function _cleanupVoiceResources() {
     if (micBtn) micBtn.classList.remove('active');
     if (voiceLayer) {
       voiceLayer.classList.remove('active');
@@ -230,9 +250,14 @@
       if (badge) badge.remove();
     }
 
-    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
     if (audioContext) {
-      try { audioContext.close(); } catch(e) {}
+      try { 
+        if (audioContext.state !== 'closed') audioContext.close(); 
+      } catch(e) {}
       audioContext = null;
     }
     if (microphoneStream) {
@@ -245,8 +270,37 @@
     }
   }
 
+  function finishVoice() {
+    if (!voiceActive || finalized) return;
+    
+    // Rationale (Why): Tell backend to manually commit the audio buffer and start analysis.
+    if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
+      voiceWs.send(JSON.stringify({ type: 'commit' }));
+    }
+    
+    if (voiceTranscriptLarge) voiceTranscriptLarge.textContent = '분석 중입니다...';
+    if (voiceOrb) {
+      voiceOrb.style.animation = 'none';
+      voiceOrb.style.transform = 'scale(1.2)';
+      voiceOrb.style.boxShadow = '0 0 40px rgba(99, 102, 241, 0.8)';
+    }
+    
+    // We don't call stopVoice yet, because we need to wait for 'final_transcript' 
+    // message from WebSocket to trigger the task.
+  }
+
   window.initVoice = initVoice;
   window.stopVoice = stopVoice;
   if (micBtn) micBtn.addEventListener('click', initVoice);
   if (voiceCloseBtn) voiceCloseBtn.addEventListener('click', stopVoice);
+
+  // Rationale (Why): Click anywhere on overlay to finish speaking and start analysis.
+  if (voiceLayer) {
+    voiceLayer.addEventListener('click', (e) => {
+      // Only finish if clicking the background itself or non-interactive elements
+      if (e.target === voiceLayer || e.target.classList.contains('aurora-bg') || e.target === voiceTranscriptLarge) {
+        finishVoice();
+      }
+    });
+  }
 })();

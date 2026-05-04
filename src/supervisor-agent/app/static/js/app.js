@@ -31,6 +31,7 @@
   let streaming = false;
   let abortController = null;
   const SESSION_STORAGE_KEY = 'smart_supervisor_session_id';
+  const MAX_MESSAGES = 50;
 
   /**
    * Rationale (Why): UUID format is required by backend Pydantic models.
@@ -76,7 +77,7 @@
 
   function updateStatusVisual(type) {
     if (!statusIndicatorEl || !statusProgressEl) return;
-    statusIndicatorEl.className = 'status-indicator';
+    statusIndicatorEl.className = 'status-dot';
     statusProgressEl.classList.remove('active');
 
     if (type === 'streaming') {
@@ -179,7 +180,23 @@
     `;
     chatEl.appendChild(msg);
     chatEl.scrollTop = chatEl.scrollHeight;
+    pruneMessages();
     return msg.querySelector('.bubble');
+  }
+
+  /**
+   * Rationale (Why): Prevent DOM bloat and memory leaks in long-running sessions.
+   */
+  function pruneMessages() {
+    if (!chatEl) return;
+    const messages = chatEl.querySelectorAll('.msg');
+    if (messages.length > MAX_MESSAGES) {
+      const toRemove = messages.length - MAX_MESSAGES;
+      for (let i = 0; i < toRemove; i++) {
+        chatEl.removeChild(messages[i]);
+      }
+      console.log(`Pruned ${toRemove} messages to keep DOM lean.`);
+    }
   }
 
   function createAiResponseShell() {
@@ -853,6 +870,12 @@
                   if (reasoningText && ai.panel) { ai.panel.classList.add('collapsed'); if (ai.toggle) ai.toggle.textContent = '펼치기'; }
                   await enhanceBubble(ai.bubble);
                   setStatus(event === 'done' ? '완료' : '에러', event === 'done' ? 'complete' : 'error');
+                  
+                  // Memory Cleanup: clear large temporary strings
+                  fullAnswer = '';
+                  reasoningText = '';
+                  sseBuf = '';
+                  
                   activeStreamTaskId = ''; streaming = false; return;
               }
               

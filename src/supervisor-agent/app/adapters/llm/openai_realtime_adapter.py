@@ -17,8 +17,8 @@ class OpenAiRealtimeAdapter(VoiceAdapter):
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or settings.openai_api_key
-        self.model = "gpt-4o-mini-realtime-preview"
-        self.url = f"wss://api.openai.com/v1/realtime?model={self.model}"
+        self.model = settings.openai_realtime_model
+        self.url = f"{settings.openai_realtime_url}?model={self.model}"
         self._ws = None
 
     async def connect(self):
@@ -68,13 +68,13 @@ class OpenAiRealtimeAdapter(VoiceAdapter):
                 "instructions": stt_instructions,
                 "input_audio_format": "pcm16",
                 "input_audio_transcription": {
-                    "model": "whisper-1"
+                    "model": settings.openai_realtime_stt_model
                 },
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.4, # Rationale (Why): Slightly more sensitive than 0.5 to catch quiet speech
+                    "threshold": 0.4, 
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 600 # Slightly faster silence detection
+                    "silence_duration_ms": 400 # Rationale (Why): Reduced from 600ms for faster auto-response.
                 }
             }
         }
@@ -100,6 +100,19 @@ class OpenAiRealtimeAdapter(VoiceAdapter):
                 logger.info("openai_audio_sent", bytes=len(audio_data), total_chunks=self._send_count)
         except Exception as e:
             logger.error("openai_send_audio_failed", error=str(e))
+
+    async def commit(self):
+        """현재까지의 오디오 버퍼를 강제로 확정하고 응답(STT)을 생성하도록 트리거."""
+        if not self._ws:
+            return
+        try:
+            logger.info("openai_manual_commit_requested")
+            # 1. 오디오 버퍼 커밋
+            await self._ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+            # 2. 응답 생성 트리거 (STT 이벤트를 유도하기 위함)
+            await self._ws.send(json.dumps({"type": "response.create"}))
+        except Exception as e:
+            logger.error("openai_commit_failed", error=str(e))
 
     async def listen(self) -> AsyncIterator[dict]:
         """OpenAI로부터 오는 이벤트를 구독하여 실시간 텍스트 데이터 추출."""
