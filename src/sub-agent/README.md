@@ -29,7 +29,7 @@
 ## 🚀 시작하기 (Getting Started)
 
 ### 사전 요구사항
-- **Python 3.10+**
+- **Python 3.11** 환경 권장 (3.13 환경에서 일부 UI 호환성 이슈 발생 가능)
 - **Redis**: 작업 큐 및 상태 관리를 위해 필요합니다.
 - **LLM API Key**: OpenAI 또는 Anthropic 등의 API 키가 필요합니다.
 
@@ -47,6 +47,14 @@ rtk python worker.py --concurrency <WORKER_COUNT>
 
 # 정상 작동 확인
 rtk ./verify_subagent.sh
+
+### 📊 에이전트 실행 시각화 (Burr UI)
+Burr 엔진을 사용하는 경우, 에이전트의 상태 전이 과정을 시각적으로 확인할 수 있습니다.
+```bash
+# Burr UI 서버 기동 (기본 포트: 7241)
+rtk burr
+```
+접속 주소: [http://localhost:7241](http://localhost:7241)
 ```
 
 ---

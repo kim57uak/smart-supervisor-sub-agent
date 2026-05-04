@@ -53,7 +53,7 @@
 
 ### 사전 요구사항
 - **Redis Server** 가동 필수
-- **Python 3.10+** 환경
+- **Python 3.11** 환경 권장 (3.13 환경에서 일부 UI 호환성 이슈 발생 가능)
 - **Environment Variables**: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` 등 필수 설정
 
 ### 실행 방법
@@ -65,6 +65,14 @@ rtk ./start.sh
 rtk uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers <API_WORKERS>
 rtk python worker.py --concurrency <WORKER_COUNT>
 ```
+
+### 📊 에이전트 실행 시각화 (Burr UI)
+Burr 엔진을 사용하는 경우, 다음 명령어로 에이전트의 상태 머신과 실행 이력을 실시간으로 모니터링할 수 있습니다.
+```bash
+# Burr UI 서버 기동 (기본 포트: 7241)
+rtk burr
+```
+접속 주소: [http://localhost:7241](http://localhost:7241)
 
 ---
 
