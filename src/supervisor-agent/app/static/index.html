@@ -28,7 +28,32 @@
         </header>
         <div id="status-progress" class="status-progress"></div>
 
-        <main id="chat" class="chat"></main>
+        <main id="chat" class="chat">
+            <div id="empty-state" class="empty-state">
+                <div class="empty-state-icon">🤖</div>
+                <div>
+                    <h2>무엇을 도와드릴까요?</h2>
+                    <p>Smart Supervisor가 멀티 에이전트를 오케스트레이션하여 복잡한 작업을 수행합니다.</p>
+                </div>
+                <div class="suggested-grid">
+                    <div class="suggested-card" onclick="setPrompt('오늘 주요 일정 요약해줘')">
+                        <span class="card-icon">📅</span>
+                        <div class="card-title">일정 요약</div>
+                        <div class="card-desc">오늘의 주요 일정과 할 일을 한눈에 정리합니다.</div>
+                    </div>
+                    <div class="suggested-card" onclick="setPrompt('기술 지원팀에 이메일 초안 작성해줘')">
+                        <span class="card-icon">✉️</span>
+                        <div class="card-title">이메일 작성</div>
+                        <div class="card-desc">상황에 맞는 전문적인 이메일 초안을 작성합니다.</div>
+                    </div>
+                    <div class="suggested-card" onclick="setPrompt('최근 프로젝트 진행 상황 브리핑해줘')">
+                        <span class="card-icon">📊</span>
+                        <div class="card-title">프로젝트 브리핑</div>
+                        <div class="card-desc">진행 중인 프로젝트의 핵심 지표를 요약합니다.</div>
+                    </div>
+                </div>
+            </div>
+        </main>
 
         <footer class="bottom">
             <div class="bottom-container">
@@ -58,7 +83,7 @@
         <div id="voiceTranscriptLarge" class="voice-transcript-large">듣고 있습니다...</div>
     </div>
 
-    <script src="/static/js/voice.js?v=5" defer></script>
-    <script src="/static/js/app.js?v=5" defer></script>
+    <script src="/static/js/voice.js?v=6" defer></script>
+    <script src="/static/js/app.js?v=6" defer></script>
 </body>
 </html>

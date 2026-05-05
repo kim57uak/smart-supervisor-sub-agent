@@ -23,6 +23,11 @@ class VoiceAdapter(ABC):
         pass
 
     @abstractmethod
+    async def commit(self):
+        """현재까지의 오디오를 확정하고 응답을 트리거합니다."""
+        pass
+
+    @abstractmethod
     async def close(self):
         """연결을 안전하게 종료합니다."""
         pass

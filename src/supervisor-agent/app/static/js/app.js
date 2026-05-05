@@ -181,6 +181,14 @@
     chatEl.appendChild(msg);
     chatEl.scrollTop = chatEl.scrollHeight;
     pruneMessages();
+
+    // Hide empty state on first user message
+    const emptyState = document.getElementById('empty-state');
+    if (emptyState && role === 'user') {
+      emptyState.classList.add('hidden');
+      setTimeout(() => { emptyState.style.display = 'none'; }, 500);
+    }
+
     return msg.querySelector('.bubble');
   }
 
@@ -1011,6 +1019,12 @@
   window.send = send;
   window.onVoiceTaskStarted = onVoiceTaskStarted;
   window.getSessionId = () => session_id;
+  window.setPrompt = (text) => {
+    if (!promptEl) return;
+    promptEl.value = text;
+    promptEl.focus();
+    autoResizePrompt();
+  };
 
   // Event Listeners
   if (sendBtn) sendBtn.addEventListener('click', () => send());
@@ -1044,5 +1058,6 @@
   }
 
   // Welcome message
-  addMessage('ai', '안녕하세요. A2A Supervisor에 오신 것을 환영합니다. 무엇을 도와드릴까요?');
+  // Welcome message (Now handled by empty-state in HTML)
+  // addMessage('ai', '안녕하세요. A2A Supervisor에 오신 것을 환영합니다. 무엇을 도와드릴까요?');
 })();

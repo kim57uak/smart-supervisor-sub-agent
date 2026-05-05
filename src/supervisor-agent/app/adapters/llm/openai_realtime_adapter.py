@@ -72,9 +72,9 @@ class OpenAiRealtimeAdapter(VoiceAdapter):
                 },
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.4, 
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 400 # Rationale (Why): Reduced from 600ms for faster auto-response.
+                    "threshold": 0.4, # Rationale (Why): Reverted to 0.4 to be more sensitive to initial phonemes.
+                    "prefix_padding_ms": 600, # Rationale (Why): Increased to 600ms to capture more audio before VAD triggers.
+                    "silence_duration_ms": 2000 
                 }
             }
         }

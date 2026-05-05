@@ -71,6 +71,7 @@ class LlmProviderSettings(BaseModel):
 
 class LlmSettings(BaseModel):
     provider: str = "openai"
+    voice_provider: str = "google"
     providers: Dict[str, LlmProviderSettings] = {
         "openai": LlmProviderSettings(model="gpt-4o-mini"),
         "google": LlmProviderSettings(model="gemini-1.5-flash"),
@@ -129,6 +130,10 @@ class Settings(BaseSettings):
     openai_realtime_model: str = "gpt-4o-mini-realtime-preview"
     openai_realtime_url: str = "wss://api.openai.com/v1/realtime"
     openai_realtime_stt_model: str = "whisper-1"
+    
+    # Google Realtime Configuration
+    google_realtime_model: str = "gemini-3.1-flash-live-preview"
+    google_realtime_url: str = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
     
     # Nested Settings
     redis: RedisSettings = RedisSettings()

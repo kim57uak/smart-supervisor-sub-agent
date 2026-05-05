@@ -74,6 +74,7 @@
       microphoneStream = stream;
       voiceWs = ws;
       
+      // Rationale (Why): OpenAI(24kHz)와 Gemini(Resampling 지원) 모두를 수용하기 위해 24kHz 표준 사용
       audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
       if (audioContext.state === 'suspended') {
         await audioContext.resume();
@@ -213,23 +214,27 @@
       const sensitivity = 5; 
       const isSilent = average < sensitivity;
 
-      const barWidth = (canvas.width / bufferLength) * 2.5;
+      const barWidth = (canvas.width / (bufferLength / 2)) * 0.8;
       let x = 0;
 
-      for (let i = 0; i < bufferLength; i++) {
-        let barHeight = (dataArray[i] / 255) * canvas.height;
-        if (isSilent) barHeight = 1.5;
+      for (let i = 0; i < bufferLength / 2; i++) {
+        let barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
+        if (isSilent) barHeight = 2;
 
         const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
-        gradient.addColorStop(0, 'rgba(59, 130, 246, 0.1)');
-        gradient.addColorStop(0.5, 'rgba(147, 51, 234, 0.6)');
-        gradient.addColorStop(1, 'rgba(59, 130, 246, 0.8)');
+        gradient.addColorStop(0, 'rgba(99, 102, 241, 0.1)');
+        gradient.addColorStop(0.5, 'rgba(168, 85, 247, 0.8)');
+        gradient.addColorStop(1, 'rgba(99, 102, 241, 0.1)');
         ctx.fillStyle = gradient;
         
         const y = (canvas.height - barHeight) / 2;
+        
+        // Symmetrical bars from center
         ctx.beginPath();
-        ctx.roundRect(x, y, barWidth - 1, barHeight, 10);
+        ctx.roundRect(canvas.width/2 + x, y, barWidth - 2, barHeight, 4);
+        ctx.roundRect(canvas.width/2 - x - barWidth, y, barWidth - 2, barHeight, 4);
         ctx.fill();
+        
         x += barWidth;
       }
     };
