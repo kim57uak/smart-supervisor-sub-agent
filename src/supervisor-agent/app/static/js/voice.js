@@ -111,14 +111,20 @@
           // Rationale (Why): Doc 23 implementation - Server already triggered the task.
           // We just notify app.js to start watching the SSE stream.
           setTimeout(() => {
-            stopVoice();
+            if (voiceOrb) {
+              voiceOrb.style.transition = 'all 0.4s ease';
+              voiceOrb.style.transform = 'scale(1)';
+              voiceOrb.style.boxShadow = '0 0 20px rgba(59, 130, 246, 0.5)';
+            }
             if (msg.task_started && msg.task_id && window.onVoiceTaskStarted) {
                 window.onVoiceTaskStarted(msg.task_id, msg.text, msg.status, msg.review_reason);
             } else if (window.send) {
                 // Fallback to legacy client-side send if server trigger failed
                 window.send();
             }
-          }, 400); 
+            // Ensure voice is stopped after task is triggered
+            setTimeout(stopVoice, 1000);
+          }, 400);
         } else if (msg.type === 'error') {
           console.error('Voice Error:', msg.message);
           alert('음성 인식 오류: ' + msg.message);
@@ -213,11 +219,17 @@
       for(let i=0; i<bufferLength; i++) sum += dataArray[i];
       const average = sum / bufferLength;
       
-      // Rationale (Why): Smoothly scale the orb based on audio volume
-      if (voiceOrb && !finalized) {
-        const targetScale = 1 + (average / 128) * 0.4;
-        voiceOrb.style.transform = `scale(${targetScale})`;
-        voiceOrb.style.filter = `brightness(${1 + (average / 128) * 0.5})`;
+      // Rationale (Why): Smoothly scale the orb based on audio volume, but only when not finalized
+      if (voiceOrb) {
+        if (finalized) {
+          // Reset to normal scale when finalized
+          voiceOrb.style.transform = 'scale(1)';
+          voiceOrb.style.filter = 'brightness(1)';
+        } else {
+          const targetScale = 1 + (average / 128) * 0.4;
+          voiceOrb.style.transform = `scale(${targetScale})`;
+          voiceOrb.style.filter = `brightness(${1 + (average / 128) * 0.5})`;
+        }
       }
 
       const sensitivity = 5; 
@@ -308,21 +320,22 @@
 
   function finishVoice() {
     if (!voiceActive || finalized) return;
-    
+
+    // Set finalized to true immediately to stop waveform
+    finalized = true;
+
     // Rationale (Why): Tell backend to manually commit the audio buffer and start analysis.
     if (voiceWs && voiceWs.readyState === WebSocket.OPEN) {
       voiceWs.send(JSON.stringify({ type: 'commit' }));
     }
-    
+
     if (voiceTranscriptLarge) voiceTranscriptLarge.textContent = '분석 중입니다...';
     if (voiceOrb) {
       voiceOrb.style.animation = 'none';
+      voiceOrb.style.transition = 'all 0.4s ease';
       voiceOrb.style.transform = 'scale(1.2)';
       voiceOrb.style.boxShadow = '0 0 40px rgba(99, 102, 241, 0.8)';
     }
-    
-    // We don't call stopVoice yet, because we need to wait for 'final_transcript' 
-    // message from WebSocket to trigger the task.
   }
 
   window.initVoice = initVoice;
