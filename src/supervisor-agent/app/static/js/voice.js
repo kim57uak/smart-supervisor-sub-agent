@@ -93,8 +93,8 @@
         if (msg.type === 'transcript') {
           if (finalized) return;
           if (voiceTranscriptLarge) voiceTranscriptLarge.textContent = msg.text;
-          const scale = 1 + (msg.text.length % 5) * 0.05;
-          if (voiceOrb) voiceOrb.style.transform = `scale(${scale})`;
+          // Rationale (Why): JS manual scaling is removed here as it's now handled 
+          // in the drawWaveform loop using real-time audio volume for smoother feedback.
         } else if (msg.type === 'final_transcript') {
           if (finalized) return;
           finalized = true;
@@ -102,9 +102,10 @@
           if (voiceTranscriptLarge) voiceTranscriptLarge.textContent = msg.text;
           
           if (voiceOrb) {
-              voiceOrb.style.animation = 'none';
+              voiceOrb.style.transition = 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
               voiceOrb.style.transform = 'scale(1.4)';
-              voiceOrb.style.boxShadow = '0 0 60px rgba(59, 130, 246, 0.9)';
+              voiceOrb.style.boxShadow = '0 0 80px rgba(59, 130, 246, 0.9)';
+              voiceOrb.style.filter = 'brightness(1.5)';
           }
 
           // Rationale (Why): Doc 23 implementation - Server already triggered the task.
@@ -192,7 +193,7 @@
     const dataArray = new Uint8Array(bufferLength);
 
     const draw = () => {
-      if (!voiceActive) {
+      if (!voiceActive || finalized) {
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
         return;
@@ -211,32 +212,62 @@
       let sum = 0;
       for(let i=0; i<bufferLength; i++) sum += dataArray[i];
       const average = sum / bufferLength;
+      
+      // Rationale (Why): Smoothly scale the orb based on audio volume
+      if (voiceOrb && !finalized) {
+        const targetScale = 1 + (average / 128) * 0.4;
+        voiceOrb.style.transform = `scale(${targetScale})`;
+        voiceOrb.style.filter = `brightness(${1 + (average / 128) * 0.5})`;
+      }
+
       const sensitivity = 5; 
       const isSilent = average < sensitivity;
 
-      const barWidth = (canvas.width / (bufferLength / 2)) * 0.8;
+      // Rationale (Why): Using a more "fluid" wave drawing instead of sharp bars
+      const barWidth = (canvas.width / (bufferLength / 2)) * 1.2;
       let x = 0;
 
-      for (let i = 0; i < bufferLength / 2; i++) {
-        let barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
-        if (isSilent) barHeight = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
 
-        const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
-        gradient.addColorStop(0, 'rgba(99, 102, 241, 0.1)');
-        gradient.addColorStop(0.5, 'rgba(168, 85, 247, 0.8)');
-        gradient.addColorStop(1, 'rgba(99, 102, 241, 0.1)');
-        ctx.fillStyle = gradient;
+      for (let i = 0; i < bufferLength / 2; i++) {
+        let barHeight = (dataArray[i] / 255) * canvas.height * 0.7;
+        if (isSilent) barHeight = 4;
         
         const y = (canvas.height - barHeight) / 2;
         
-        // Symmetrical bars from center
-        ctx.beginPath();
-        ctx.roundRect(canvas.width/2 + x, y, barWidth - 2, barHeight, 4);
-        ctx.roundRect(canvas.width/2 - x - barWidth, y, barWidth - 2, barHeight, 4);
-        ctx.fill();
-        
+        // Draw symmetrical smooth curves
+        ctx.quadraticCurveTo(
+            canvas.width/2 + x, y, 
+            canvas.width/2 + x + barWidth/2, y + barHeight/2
+        );
+      }
+      
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+      gradient.addColorStop(0, 'rgba(99, 102, 241, 0)');
+      gradient.addColorStop(0.5, 'rgba(168, 85, 247, 0.6)');
+      gradient.addColorStop(1, 'rgba(99, 102, 241, 0)');
+      
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Reset x for the other side
+      x = 0;
+      ctx.beginPath();
+      ctx.moveTo(canvas.width, canvas.height / 2);
+      for (let i = 0; i < bufferLength / 2; i++) {
+        let barHeight = (dataArray[i] / 255) * canvas.height * 0.7;
+        if (isSilent) barHeight = 4;
+        const y = (canvas.height - barHeight) / 2;
+        ctx.quadraticCurveTo(
+            canvas.width/2 - x, y, 
+            canvas.width/2 - x - barWidth/2, y + barHeight/2
+        );
         x += barWidth;
       }
+      ctx.stroke();
     };
     draw();
   }
