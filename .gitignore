@@ -217,6 +217,3 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .gstack/
-
-# Local SSL certs (mkcert)
-certs/
