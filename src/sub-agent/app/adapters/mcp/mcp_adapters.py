@@ -1,3 +1,22 @@
+"""
+[Sub-Agent] MCP 도구 실행 어댑터
+==================================
+책임: MCP 서버에 도구 실행을 요청하고 결과 반환 (ToolExecutor Port 구현)
+아키텍처 위치: Adapter Layer — MCP Integration (Outbound)
+
+실행 전 검증 (Schema Guard):
+  1. Runtime 필드 주입 (session_id, trace_id, task_id 등)
+  2. GUID 필드 자동 생성 (중복 방지 식별자)
+  3. 필수 파라미터 누락 검사 → [MISSING_REQUIRED_PARAMS]
+  4. 알 수 없는 필드 검사 → [SCHEMA_MISMATCH_UNKNOWN_PARAMS]
+  5. inputSchema 엄격 준수
+
+핵심 보안 규칙:
+  - LLM이 생성한 도구 호출을 inputSchema 기준으로 검증
+  - schema에 없는 파라미터 차단 (환각 방지)
+  - 필수 파라미터 누락 시 차단 (불완전한 실행 방지)
+"""
+
 import structlog
 from typing import Dict, Any, Optional, List
 from copy import deepcopy
@@ -10,8 +29,8 @@ logger = structlog.get_logger(__name__)
 
 class McpExecutor(ToolExecutor):
     """
-    Executes tools by calling MCP servers via decoupled infrastructure.
-    Implements the ToolExecutor port.
+    MCP 도구 실행기.
+    Registry(도구 메타정보) + SessionManager(전송 계층) 조합으로 도구 실행.
     """
     def __init__(self, registry: McpToolRegistry, session_manager: McpClientSessionManager):
         self.registry = registry
@@ -19,6 +38,7 @@ class McpExecutor(ToolExecutor):
 
     @staticmethod
     def _is_missing(value: Any) -> bool:
+        """값이 없거나 빈 문자열인지 확인"""
         return value is None or (isinstance(value, str) and not value.strip())
 
     def _collect_missing_required(
@@ -27,6 +47,7 @@ class McpExecutor(ToolExecutor):
         data: Any,
         path: str = ""
     ) -> List[str]:
+        """inputSchema의 required 필드 중 누락된 항목 재귀 수집 (중첩 객체 지원)"""
         missing: List[str] = []
         if schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
             return missing
@@ -45,8 +66,7 @@ class McpExecutor(ToolExecutor):
                 continue
             if key not in data_obj or not isinstance(data_obj.get(key), dict):
                 continue
-            key_path = f"{path}.{key}" if path else key
-            missing.extend(self._collect_missing_required(child_schema, data_obj.get(key), key_path))
+            missing.extend(self._collect_missing_required(child_schema, data_obj.get(key), f"{path}.{key}" if path else key))
 
         return missing
 
@@ -56,6 +76,7 @@ class McpExecutor(ToolExecutor):
         data: Any,
         path: str = ""
     ) -> List[str]:
+        """inputSchema에 없는 필드 수집 (LLM 환각 방지)"""
         unknown: List[str] = []
         if not isinstance(data, dict):
             return unknown
@@ -74,6 +95,10 @@ class McpExecutor(ToolExecutor):
         return unknown
 
     def _inject_guid_fields(self, schema: Dict[str, Any], data: Any, runtime_guid: str) -> None:
+        """
+        inputSchema의 guid 필드에 런타임 GUID 자동 주입.
+        LLM이 생성하지 못하는 식별자를 시스템이 보완.
+        """
         if not isinstance(data, dict):
             return
         if schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
@@ -91,9 +116,11 @@ class McpExecutor(ToolExecutor):
 
     @staticmethod
     def _normalize_field_name(name: str) -> str:
+        """필드명 정규화 (대소문자+특수문자 무시한 비교용)"""
         return "".join(ch for ch in str(name).lower() if ch.isalnum())
 
     def _schema_contains_runtime_key(self, schema: Dict[str, Any], normalized_runtime_keys: set[str]) -> bool:
+        """스키마에 특정 런타임 키가 존재하는지 재귀 검사"""
         if schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
             return False
         for key, child_schema in schema.get("properties", {}).items():
@@ -104,6 +131,10 @@ class McpExecutor(ToolExecutor):
         return False
 
     def _inject_runtime_fields(self, schema: Dict[str, Any], data: Any, runtime_fields: Dict[str, Any]) -> None:
+        """
+        런타임 필드 자동 주입 (session_id, trace_id, task_id 등).
+        LLM이 제공하지 않아도 시스템이 채워주는 필드.
+        """
         if not isinstance(data, dict):
             return
         if schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
@@ -131,13 +162,19 @@ class McpExecutor(ToolExecutor):
                 self._inject_runtime_fields(child_schema, data[key], runtime_fields)
 
     async def execute(self, plan: ToolPlan, runtime_fields: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        MCP 도구 실행 (Schema Guard 포함).
+        1. 세션 초기화 확인
+        2. 런타임/GUID 필드 주입
+        3. inputSchema 검증 (missing/unknown)
+        4. tools/call 호출
+        """
         session = self.session_manager.get_session(plan.server_name)
         log = logger.bind(tool=plan.tool_name, server=plan.server_name, url=session.url)
 
         log.info("executing_mcp_tool")
 
         try:
-            # Ensure session is initialized before tool execution
             if not session.session_id:
                 log.info("initializing_mcp_session", reason="session_id_missing")
                 init_result = await session.call("initialize", {})
@@ -159,28 +196,17 @@ class McpExecutor(ToolExecutor):
                 missing_required = self._collect_missing_required(input_schema, arguments)
                 if missing_required:
                     log.warn("mcp_tool_missing_required_params", missing=missing_required)
-                    return {
-                        "status": "error",
-                        "message": f"[MISSING_REQUIRED_PARAMS] {', '.join(missing_required)}"
-                    }
+                    return {"status": "error", "message": f"[MISSING_REQUIRED_PARAMS] {', '.join(missing_required)}"}
 
                 unknown_fields = self._collect_unknown_fields(input_schema, arguments)
                 if unknown_fields:
                     log.warn("mcp_tool_unknown_params", unknown=unknown_fields)
-                    return {
-                        "status": "error",
-                        "message": f"[SCHEMA_MISMATCH_UNKNOWN_PARAMS] {', '.join(unknown_fields)}"
-                    }
+                    return {"status": "error", "message": f"[SCHEMA_MISMATCH_UNKNOWN_PARAMS] {', '.join(unknown_fields)}"}
 
-            params = {
-                "name": plan.tool_name,
-                "arguments": arguments
-            }
-
+            params = {"name": plan.tool_name, "arguments": arguments}
             log.info("mcp_tool_request", params=params)
 
             result = await session.call("tools/call", params)
-
             log.info("mcp_tool_response", result=result)
 
             if "error" in result:
@@ -188,10 +214,7 @@ class McpExecutor(ToolExecutor):
                 return {"status": "error", "message": result["error"].get("message")}
 
             log.info("mcp_tool_execution_success")
-            return {
-                "status": "success",
-                "output": result.get("result", {}).get("content", "Success")
-            }
+            return {"status": "success", "output": result.get("result", {}).get("content", "Success")}
 
         except Exception as e:
             log.error("mcp_transport_error", error=str(e))

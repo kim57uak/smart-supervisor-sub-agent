@@ -1,3 +1,20 @@
+"""
+[Sub-Agent] 의존성 주입 컨테이너 — Factory Functions + FastAPI Depends
+====================================================================
+책임: 모든 Adapter/Service/UseCase 인스턴스 생성과 Wiring을 중앙 관리
+아키텍처 위치: Core / DI Layer (Hexagonal Architecture의 Composition Root)
+
+원칙:
+  1. Global Shared Infrastructure: MCP Transport Factory는 싱글톤으로 공유
+  2. Factory Functions: FastAPI Depends 없이 독립적으로 사용 가능
+  3. FastAPI Depends Wrappers: Factory Functions를 FastAPI 라우터에서 사용할 수 있게 wrapping
+  4. Cache Layer: MCP Tool Registry는 재사용 (초기화 비용 절감)
+
+주의:
+  - create_redis_adapter()는 호출마다 새 Redis 연결 생성 → 연결 풀 관리 검토 필요
+  - 두 Orchestration Engine(LangGraph/Burr)를 create_orchestration_engine()에서 switch
+"""
+
 import structlog
 from typing import Any, Optional
 
@@ -8,8 +25,6 @@ from ..domain.enums import OrchestrationEngineType
 
 logger = structlog.get_logger(__name__)
 
-
-# Adapters
 from ..adapters.store.redis_store import RedisAdapter
 from ..adapters.mcp.mcp_tool_registry import McpToolRegistry
 from ..adapters.mcp.mcp_adapters import McpExecutor
@@ -20,27 +35,31 @@ from ..adapters.orchestration.langgraph_adapter import LangGraphAdapter
 from ..adapters.orchestration.burr_factory import BurrWorkflowFactory
 from ..adapters.orchestration.burr_adapter import BurrAdapter
 
-# Use Cases & Application logic
 from ..application.execution.chat_usecase import AgentChatUseCase
 from ..application.execution.executor import AgentExecutor
 from ..application.execution.worker import WorkerExecutionService
 from ..application.persistence.agent_persistence import AgentPersistence
 from ..application.read.agent_read_facade import AgentReader
 
-# Domain Services
 from ..services.agent_authorization_service import AgentAuthorizationService
 
-# --- Global Shared Infrastructure ---
+# ============================================================
+# 전역 공유 인프라 (싱글톤)
+# ============================================================
 _mcp_tool_registry: Optional[McpToolRegistry] = None
 _mcp_transport_factory = McpTransportFactory()
 
-# --- Factory Functions (FastAPI Independent) ---
-# Rationale (Why): Separating creation logic from FastAPI Depends to avoid NameErrors and attribute errors in standalone processes.
+# ============================================================
+# Factory Functions (FastAPI 비의존)
+# Worker 프로세스에서도 동일한 생성 로직 재사용 목적
+# ============================================================
 
 async def create_redis_adapter() -> RedisAdapter:
+    """RedisStore/TaskQueue/ProgressPublisher 통합 어댑터 생성"""
     return RedisAdapter(settings.redis_url)
 
 async def create_mcp_tool_registry() -> McpToolRegistry:
+    """MCP 도구 레지스트리 (싱글톤 캐싱) — 첫 호출 시 전체 MCP 서버에서 도구 목록 실시간 수집"""
     global _mcp_tool_registry
     if _mcp_tool_registry is None:
         _mcp_tool_registry = McpToolRegistry(_mcp_transport_factory)
@@ -48,14 +67,17 @@ async def create_mcp_tool_registry() -> McpToolRegistry:
     return _mcp_tool_registry
 
 async def create_mcp_session_manager() -> McpClientSessionManager:
+    """MCP 클라이언트 세션 관리자 생성"""
     return McpClientSessionManager(_mcp_transport_factory)
 
 async def create_tool_executor() -> McpExecutor:
+    """MCP 도구 실행기 생성 (Registry + SessionManager 조합)"""
     registry = await create_mcp_tool_registry()
     sessions = await create_mcp_session_manager()
     return McpExecutor(registry, sessions)
 
 async def create_workflow_factory() -> WorkflowFactory:
+    """LangGraph 워크플로 팩토리 생성"""
     planner = LlmPlanner()
     executor = await create_tool_executor()
     composer = LlmComposer()
@@ -64,6 +86,7 @@ async def create_workflow_factory() -> WorkflowFactory:
     return WorkflowFactory(planner, executor, composer, adapter, registry)
 
 async def create_burr_factory() -> BurrWorkflowFactory:
+    """Burr 워크플로 팩토리 생성"""
     planner = LlmPlanner()
     executor = await create_tool_executor()
     composer = LlmComposer()
@@ -73,7 +96,9 @@ async def create_burr_factory() -> BurrWorkflowFactory:
 
 async def create_orchestration_engine() -> Any:
     """
-    Factory for creating the orchestration engine based on settings.
+    설정에 따라 Orchestration Engine 선택 생성
+    - BURR → BurrAdapter
+    - 기본값 → LangGraphAdapter
     """
     engine_type = settings.orchestration_engine
     
@@ -81,22 +106,24 @@ async def create_orchestration_engine() -> Any:
         factory = await create_burr_factory()
         return BurrAdapter(factory)
     
-    # Default: LANGGRAPH
     factory = await create_workflow_factory()
     return LangGraphAdapter(factory)
 
 async def create_agent_executor() -> AgentExecutor:
+    """AgentExecutor 생성 (Engine + Persistence + Publisher)"""
     engine = await create_orchestration_engine()
     adapter = await create_redis_adapter()
     persistence = AgentPersistence(adapter)
     return AgentExecutor(engine, persistence, adapter)
 
 async def create_worker_service() -> WorkerExecutionService:
-    # Rationale (Why): Explicitly instantiating to avoid any FastAPI wrapper interference.
+    """
+    Worker 전용 서비스 생성.
+    FastAPI Depends 없이 독립 프로세스(worker.py)에서 직접 호출.
+    """
     adapter = await create_redis_adapter()
     executor = await create_agent_executor()
     
-    # Debug: Confirming types at instantiation time
     logger.info("instantiating_worker_service", 
                 adapter_type=str(type(adapter)), 
                 executor_type=str(type(executor)))
@@ -107,7 +134,10 @@ async def create_worker_service() -> WorkerExecutionService:
         publisher=adapter
     )
 
-# --- FastAPI Dependency Wrappers ---
+# ============================================================
+# FastAPI Dependency Injection Wrappers
+# FastAPI 라우터에서 Depends()로 주입받기 위한 async 함수들
+# ============================================================
 
 async def get_redis_adapter() -> RedisAdapter:
     return await create_redis_adapter()
@@ -184,6 +214,6 @@ async def get_worker_execution_service(
 ) -> WorkerExecutionService:
     return WorkerExecutionService(adapter, executor, adapter)
 
-# For compatibility with existing worker.py
+# worker.py 호환성 유지 (FastAPI Depends 없이 사용)
 async def resolve_worker_service() -> WorkerExecutionService:
     return await create_worker_service()

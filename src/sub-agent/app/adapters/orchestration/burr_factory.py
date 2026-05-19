@@ -10,10 +10,18 @@ from ..mcp.mcp_tool_registry import McpToolRegistry
 
 logger = structlog.get_logger(__name__)
 
+# ──────────────────────────────────────────────
+# Burr 워크플로우 팩토리
+# ──────────────────────────────────────────────
+# Burr 프레임워크를 사용한 서브 에이전트 워크플로우 팩토리.
+# LangGraph 버전(WorkflowFactory)과 동일한 5개 노드 파이프라인을 Burr @action 데코레이터로 구현한다.
+# Burr 0.40.2 기준: ApplicationBuilder → with_actions → with_transitions 체인으로 워크플로우 정의.
+#
+# LangGraphFactory와의 차이점:
+# - LangGraph는 StateGraph.node() → edge() → compile()
+# - Burr는 @action decorator + ApplicationBuilder.with_actions() + with_transitions()
+# 내부 노드 로직은 LangGraph 버전과 ~80% 동일 (DRY 위반, 향후 공통 베이스 클래스 추출 가능)
 class BurrWorkflowFactory:
-    """
-    Factory for creating the Burr application for sub-agent.
-    """
     def __init__(
         self,
         planner: Planner,
@@ -29,9 +37,10 @@ class BurrWorkflowFactory:
         self.registry = registry
         self.max_iterations = settings.agent.graph.max_tool_iterations
 
+    # ApplicationBuilder 반환 (Document 12/20)
+    # 빌더를 반환하여 build() 전에 상태 주입이 가능하도록 한다.
+    # 요청별 변수(session_id, task_id, trace_id)는 클로저가 아닌 초기 상태로 전달한다.
     def create_application_builder(self, session_id: str, task_id: str, trace_id: str) -> ApplicationBuilder:
-        # Rationale (Why): Return builder to allow state injection before building (Document 12/20).
-        # We avoid capturing request-specific variables in closures by passing them in the initial state.
         
         @action(reads=["user_message", "session_id", "task_id", "trace_id"], writes=["history", "loop_count"])
         async def load_context(state: State) -> Tuple[dict, State]:
@@ -147,7 +156,7 @@ class BurrWorkflowFactory:
                 status=ProcessStatus.COMPLETED
             )
 
-        # Rationale (Why): In Burr 0.40.2, using expr() creates a valid Condition object for validation.
+        # Burr 0.40.2에서 expr()로 Condition 객체 생성
         from burr.core import when, default, expr
 
         return (
@@ -170,6 +179,8 @@ class BurrWorkflowFactory:
                 finalize_context=finalize_context,
                 compose_response=compose_response
             )
+            # 전이 규칙:
+            # - plans 존재 시 execute_tools 실행, plans 없음 → compose_response
             .with_transitions(
                 ("load_context", "select_tools"),
                 ("select_tools", "execute_tools", expr("len(plans) > 0")),

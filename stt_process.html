@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STT (Speech-to-Text) 처리 프로세스 문서</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242837;
+    --border: #2e3440;
+    --text: #e5e9f0;
+    --text-dim: #8a8fa8;
+    --accent: #88c0d0;
+    --accent2: #a3be8c;
+    --accent3: #bf616a;
+    --accent4: #ebcb8b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+
+  /* 헤더 */
+  header {
+    padding: 2rem 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2.5rem;
+  }
+  header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  header p {
+    color: var(--text-dim);
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  /* 메타 정보 */
+  .meta {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    padding: 1rem 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .meta span strong { color: var(--text); }
+
+  /* 섹션 */
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+  }
+  section h2 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  section h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+  }
+  section h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent4);
+    margin-top: 1rem;
+    margin-bottom: 0.25rem;
+  }
+
+  /* 텍스트 */
+  p { margin-bottom: 0.75rem; }
+  ul, ol { margin: 0.5rem 0 0.75rem 1.5rem; }
+  li { margin-bottom: 0.3rem; }
+
+  /* 코드 */
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85em;
+    background: var(--surface2);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    color: var(--accent4);
+  }
+  pre {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin: 0.75rem 0;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+    color: var(--text);
+  }
+
+  /* 테이블 */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    font-size: 0.85rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+  }
+  th {
+    background: var(--surface2);
+    font-weight: 600;
+    color: var(--accent);
+  }
+  td { background: var(--surface); }
+
+  /* 다이어그램 (텍스트) */
+  .diagram {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    padding: 1rem 0.5rem;
+    white-space: pre;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+  }
+
+  /* 컬러 박스 */
+  .note {
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    border-left: 3px solid var(--accent);
+    background: rgba(136, 192, 208, 0.08);
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+  }
+  .note.warn { border-left-color: var(--accent3); background: rgba(191, 97, 106, 0.08); }
+  .note.ok { border-left-color: var(--accent2); background: rgba(163, 190, 140, 0.08); }
+
+  /* 푸터 */
+  footer {
+    text-align: center;
+    padding: 2rem 0;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+  }
+
+  /* 요약 카드 */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 0.75rem 0;
+  }
+  .summary-card {
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 1rem;
+  }
+  .summary-card h4 { color: var(--accent); margin-top: 0; margin-bottom: 0.5rem; }
+  .summary-card p { font-size: 0.85rem; color: var(--text-dim); margin: 0; }
+
+  @media (max-width: 640px) {
+    body { padding: 1rem; }
+    .summary-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>STT (Speech-to-Text) 처리 프로세스</h1>
+  <p>Supervisor Agent 음성 입력 → 텍스트 변환 → execute_task 연동 전체 흐름</p>
+</header>
+
+<div class="meta">
+  <span>프로젝트: <strong>smart-supervisor-sub-agent</strong></span>
+  <span>작성 기준: <strong>v1.0</strong></span>
+  <span>STT Provider: <strong>OpenAI Realtime / Google Gemini Live</strong></span>
+</div>
+
+<!-- ================================================================ -->
+<section>
+<h2>1. 엔드포인트 구조</h2>
+
+<p>단순 채팅과 음성은 <strong>서로 다른 엔드포인트</strong>를 사용한다. 이유는 프로토콜과 입력 타입이 근본적으로 다르기 때문.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>구분</th>
+      <th>엔드포인트</th>
+      <th>프로토콜</th>
+      <th>입력 타입</th>
+      <th>파일</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>채팅</td>
+      <td><code>POST /a2a/supervisor</code></td>
+      <td>HTTP (JSON-RPC 2.0)</td>
+      <td>JSON text</td>
+      <td><code>supervisor.py:36</code></td>
+    </tr>
+    <tr>
+      <td>음성</td>
+      <td><code>WS /a2a/supervisor/voice/stream</code></td>
+      <td>WebSocket</td>
+      <td>PCM16 binary + JSON</td>
+      <td><code>supervisor.py:181</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>왜 분리했는가?</strong> 음성은 실시간 오디오 청크 스트리밍이 필요하다. PCM16 청크를 HTTP로 base64 인코딩해서 보내면 chunk 단위 처리 불가, 전체 업로드 후 처리 → 레이턴시 폭발. WebSocket은 한 번의 핸드셰이크로 지속적인 양방향 스트리밍이 가능하다.
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>2. 전체 아키텍처 흐름</h2>
+
+<svg viewBox="0 0 920 620" style="width:100%;max-width:920px;display:block;margin:0.75rem auto;font-family:system-ui,-apple-system,sans-serif;">
+  <defs>
+    <linearGradient id="lane-browser" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2d4a3e"/><stop offset="100%" stop-color="#1a2d25"/></linearGradient>
+    <linearGradient id="lane-server" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2a3f5c"/><stop offset="100%" stop-color="#192837"/></linearGradient>
+    <linearGradient id="lane-stt" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4a2850"/><stop offset="100%" stop-color="#2a1a30"/></linearGradient>
+    <linearGradient id="box-browser" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3b6b56"/><stop offset="100%" stop-color="#2d4a3e"/></linearGradient>
+    <linearGradient id="box-server" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4a7fa8"/><stop offset="100%" stop-color="#2a4a6a"/></linearGradient>
+    <linearGradient id="box-stt" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7a4290"/><stop offset="100%" stop-color="#4a2860"/></linearGradient>
+    <linearGradient id="box-exec" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#c8a84a"/><stop offset="100%" stop-color="#a08030"/></linearGradient>
+    <marker id="arrow-b" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#88c0d0"/></marker>
+    <marker id="arrow-p" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#b48ead"/></marker>
+    <marker id="arrow-y" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#ebcb8b"/></marker>
+    <marker id="arrow-g-up" viewBox="0 0 10 10" refX="5" refY="10" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L5 10 L10 0 Z" fill="#a3be8c"/></marker>
+    <marker id="arrow-p-down" viewBox="0 0 10 10" refX="5" refY="0" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 10 L5 0 L10 10 Z" fill="#b48ead"/></marker>
+    <marker id="arrow-y-down" viewBox="0 0 10 10" refX="5" refY="0" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 10 L5 0 L10 10 Z" fill="#ebcb8b"/></marker>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="920" height="620" rx="8" fill="#131720"/>
+
+  <!-- Swimlane: Browser (left) -->
+  <rect x="6" y="6" width="290" height="608" rx="6" fill="url(#lane-browser)" opacity="0.6"/>
+  <text x="145" y="30" text-anchor="middle" fill="#88c0d0" font-size="13" font-weight="700" letter-spacing="1">BROWSER</text>
+  <line x1="20" y1="40" x2="282" y2="40" stroke="#3b6b56" stroke-width="1"/>
+
+  <!-- Swimlane: Server (center) -->
+  <rect x="310" y="6" width="300" height="608" rx="6" fill="url(#lane-server)" opacity="0.6"/>
+  <text x="455" y="30" text-anchor="middle" fill="#5e81ac" font-size="13" font-weight="700" letter-spacing="1">SERVER (supervisor.py)</text>
+  <line x1="324" y1="40" x2="596" y2="40" stroke="#4a7fa8" stroke-width="1"/>
+
+  <!-- Swimlane: STT Provider (right) -->
+  <rect x="624" y="6" width="290" height="608" rx="6" fill="url(#lane-stt)" opacity="0.6"/>
+  <text x="764" y="30" text-anchor="middle" fill="#b48ead" font-size="13" font-weight="700" letter-spacing="1">STT PROVIDER</text>
+  <line x1="638" y1="40" x2="900" y2="40" stroke="#7a4290" stroke-width="1"/>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- ROW 1: Setup (y=55..95)                       -->
+  <!-- ═══════════════════════════════════════════════ -->
+
+  <!-- Browser: getUserMedia -->
+  <rect x="35" y="55" width="230" height="40" rx="6" fill="url(#box-browser)" filter="url(#shadow)"/>
+  <text x="150" y="79" text-anchor="middle" fill="#d8eef0" font-size="11" font-weight="600">navigator.mediaDevices.getUserMedia()</text>
+
+  <!-- Step 1 arrow: Browser → Server (touches both box edges exactly) -->
+  <line x1="265" y1="75" x2="320" y2="75" stroke="#88c0d0" stroke-width="2" marker-end="url(#arrow-b)"/>
+  <text x="279" y="68" fill="#88c0d0" font-size="9">WS connect</text>
+  <text x="279" y="94" fill="#6a8a9a" font-size="8">/voice/stream?session_id</text>
+
+  <!-- Server: websocket_voice_stream -->
+  <rect x="320" y="55" width="280" height="40" rx="6" fill="url(#box-server)" filter="url(#shadow)"/>
+  <text x="460" y="74" text-anchor="middle" fill="#b8d8f0" font-size="11" font-weight="600">websocket_voice_stream()</text>
+  <text x="460" y="89" text-anchor="middle" fill="#8aaaac" font-size="9">WS accept + adapter 생성</text>
+
+  <!-- Step 2 arrow: Server → STT (touches both box edges exactly) -->
+  <line x1="600" y1="75" x2="640" y2="75" stroke="#b48ead" stroke-width="2" marker-end="url(#arrow-p)"/>
+  <text x="607" y="68" fill="#b48ead" font-size="9">adapter.connect()</text>
+
+  <!-- STT: connect -->
+  <rect x="640" y="55" width="240" height="40" rx="6" fill="url(#box-stt)" filter="url(#shadow)"/>
+  <text x="755" y="74" text-anchor="middle" fill="#d8c0e0" font-size="11" font-weight="600">STT Provider 연결</text>
+  <text x="755" y="89" text-anchor="middle" fill="#a88ab0" font-size="9">WS handshake + session setup</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- ROW 2: Loop labels (y=125)                    -->
+  <!-- ═══════════════════════════════════════════════ -->
+
+  <rect x="325" y="125" width="130" height="26" rx="13" fill="#2a4a6a" stroke="#4a7fa8" stroke-width="1"/>
+  <text x="390" y="142" text-anchor="middle" fill="#88c0d0" font-size="10" font-weight="600">receive_loop()</text>
+
+  <rect x="465" y="125" width="130" height="26" rx="13" fill="#2a4a6a" stroke="#4a7fa8" stroke-width="1"/>
+  <text x="530" y="142" text-anchor="middle" fill="#88c0d0" font-size="10" font-weight="600">send_loop()</text>
+
+  <!-- Vertical guide from websocket_voice_stream down to the two loops -->
+  <line x1="390" y1="95" x2="390" y2="125" stroke="#4a7fa8" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="530" y1="95" x2="530" y2="125" stroke="#4a7fa8" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- ROW 3: Audio streaming (y=175..225)           -->
+  <!-- ═══════════════════════════════════════════════ -->
+
+  <!-- Step 3: PCM16 downward from getUserMedia -->
+  <line x1="150" y1="155" x2="150" y2="175" stroke="#a3be8c" stroke-width="1.5" marker-end="url(#arrow-g-up)"/>
+
+  <!-- Browser: PCM16 chunks -->
+  <rect x="35" y="180" width="230" height="42" rx="6" fill="url(#box-browser)" filter="url(#shadow)" opacity="0.85"/>
+  <text x="150" y="200" text-anchor="middle" fill="#c0e8d0" font-size="11" font-weight="600">PCM16 audio chunks</text>
+  <text x="150" y="215" text-anchor="middle" fill="#88b8a0" font-size="9">raw samples (24000Hz, 20ms frames)</text>
+
+  <!-- Arrow: PCM16 box → Server send_audio box (exact edge to edge) -->
+  <line x1="150" y1="222" x2="150" y2="245" stroke="#a3be8c" stroke-width="1.5" marker-end="url(#arrow-g-up)"/>
+  <line x1="150" y1="250" x2="320" y2="250" stroke="#88c0d0" stroke-width="2" marker-end="url(#arrow-b)"/>
+  <text x="222" y="243" fill="#88c0d0" font-size="9">WS binary →</text>
+
+  <!-- Server: adapter.send_audio() -->
+  <rect x="320" y="235" width="280" height="30" rx="6" fill="url(#box-server)" filter="url(#shadow)" opacity="0.85"/>
+  <text x="460" y="254" text-anchor="middle" fill="#b8d8f0" font-size="11" font-weight="600">adapter.send_audio(bytes)</text>
+
+  <!-- Arrow: Server → STT (exact edge to edge) -->
+  <line x1="600" y1="250" x2="640" y2="250" stroke="#b48ead" stroke-width="2" marker-end="url(#arrow-p)"/>
+  <text x="607" y="243" fill="#b48ead" font-size="9">base64 encode →</text>
+
+  <!-- STT: buffer -->
+  <rect x="640" y="235" width="240" height="30" rx="6" fill="url(#box-stt)" filter="url(#shadow)" opacity="0.85"/>
+  <text x="755" y="254" text-anchor="middle" fill="#d8c0e0" font-size="10" font-weight="600">input_audio_buffer.append (base64 JSON)</text>
+
+  <!-- Vertical: buffer → STT model -->
+  <line x1="755" y1="265" x2="755" y2="280" stroke="#7a4290" stroke-width="1.5" marker-end="url(#arrow-p-down)"/>
+
+  <!-- STT: Whisper model -->
+  <rect x="640" y="285" width="240" height="30" rx="6" fill="url(#box-stt)" filter="url(#shadow)" opacity="0.7"/>
+  <text x="755" y="304" text-anchor="middle" fill="#c8aac0" font-size="10" font-weight="600">Whisper / Gemini STT Model</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- ROW 4: STT results back to Server (y=330..370) -->
+  <!-- ═══════════════════════════════════════════════ -->
+
+  <!-- Step 4: STT → Server: transcript events -->
+  <line x1="755" y1="315" x2="755" y2="340" stroke="#b48ead" stroke-width="1.5" marker-end="url(#arrow-p-down)"/>
+  <line x1="755" y1="345" x2="600" y2="345" stroke="#b48ead" stroke-width="2" marker-end="url(#arrow-p)"/>
+  <text x="670" y="338" fill="#b48ead" font-size="9">transcript / final_transcript events</text>
+
+  <!-- Server: adapter.listen() -->
+  <rect x="460" y="330" width="140" height="30" rx="6" fill="url(#box-server)" filter="url(#shadow)" opacity="0.85"/>
+  <text x="530" y="349" text-anchor="middle" fill="#b8d8f0" font-size="10" font-weight="600">adapter.listen()</text>
+
+  <!-- Step 5: partial transcript → Browser -->
+  <line x1="460" y1="345" x2="265" y2="345" stroke="#88c0d0" stroke-width="2" marker-end="url(#arrow-b)"/>
+  <text x="365" y="338" fill="#88c0d0" font-size="9">{"type":"transcript"} (실시간 자막)</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- ROW 5: final_transcript → execute_task (y=385..440) -->
+  <!-- ═══════════════════════════════════════════════ -->
+
+  <!-- Step 6a: final_transcript from STT -->
+  <rect x="640" y="385" width="240" height="30" rx="6" fill="url(#box-stt)" filter="url(#shadow)" opacity="0.8"/>
+  <text x="755" y="403" text-anchor="middle" fill="#ebcb8b" font-size="10" font-weight="600">input_audio_transcription.completed</text>
+
+  <!-- Vertical from STT model to final_transcript box -->
+  <line x1="755" y1="370" x2="755" y2="385" stroke="#b48ead" stroke-width="1.5"/>
+
+  <!-- Arrow: final_transcript → Server execute_task (touching exact edges) -->
+  <line x1="755" y1="415" x2="755" y2="438" stroke="#ebcb8b" stroke-width="1.5" marker-end="url(#arrow-y-down)"/>
+  <line x1="755" y1="443" x2="520" y2="443" stroke="#ebcb8b" stroke-width="2" marker-end="url(#arrow-y)"/>
+  <text x="645" y="436" fill="#ebcb8b" font-size="9">{"type":"final_transcript","text":"..."}</text>
+
+  <!-- Server: execute_task box -->
+  <rect x="320" y="425" width="200" height="42" rx="6" fill="url(#box-exec)" filter="url(#shadow)"/>
+  <text x="420" y="445" text-anchor="middle" fill="#1a1d27" font-size="11" font-weight="700">agent_service</text>
+  <text x="420" y="460" text-anchor="middle" fill="#3a2d17" font-size="11" font-weight="700">.execute_task()</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- ROW 6: Result → Browser (y=480..530)          -->
+  <!-- ═══════════════════════════════════════════════ -->
+
+  <!-- Vertical: execute_task → task_result -->
+  <line x1="420" y1="467" x2="420" y2="493" stroke="#ebcb8b" stroke-width="1.5" marker-end="url(#arrow-y-down)"/>
+
+  <!-- Server: task result -->
+  <rect x="320" y="498" width="200" height="30" rx="6" fill="#2a3f5c" stroke="#5e81ac" stroke-width="1" filter="url(#shadow)"/>
+  <text x="420" y="517" text-anchor="middle" fill="#88c0d0" font-size="10">task_started=true, task_id, status</text>
+
+  <!-- Step 7: task result → Browser -->
+  <line x1="320" y1="513" x2="265" y2="513" stroke="#88c0d0" stroke-width="2" marker-end="url(#arrow-b)"/>
+  <text x="279" y="506" fill="#88c0d0" font-size="9">task_started 응답</text>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- Step number badges                             -->
+  <!-- ═══════════════════════════════════════════════ -->
+
+  <circle cx="16" cy="75" r="9" fill="#4a7fa8"/><text x="16" y="78" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">1</text>
+  <circle cx="16" cy="185" r="9" fill="#4a7fa8"/><text x="16" y="188" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">2</text>
+  <circle cx="16" cy="250" r="9" fill="#4a7fa8"/><text x="16" y="253" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">3</text>
+  <circle cx="16" cy="345" r="9" fill="#4a7fa8"/><text x="16" y="348" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">4</text>
+  <circle cx="16" cy="440" r="9" fill="#4a7fa8"/><text x="16" y="443" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">5</text>
+</svg>
+
+<ol style="margin-top:0.5rem">
+  <li><strong>Browser</strong> → Server: WebSocket connect (<code>/voice/stream?session_id=xxx</code>)</li>
+  <li><strong>Server</strong>: adapter 생성 (<code>VoiceAdapterFactory</code>) + <code>adapter.connect()</code> → STT Provider WS 연결</li>
+  <li><strong>receive_loop</strong>: Browser PCM16 binary → <code>adapter.send_audio(bytes)</code> → STT Provider (base64 JSON)</li>
+  <li><strong>send_loop</strong>: <code>adapter.listen()</code> → STT Provider 이벤트 스트림 구독</li>
+  <li>Partial <code>{"type":"transcript"}</code> → Browser 실시간 자막 (UX 전용)</li>
+  <li><strong>final_transcript</strong> → <code>agent_service.execute_task(session_id, transcript, request_id)</code> (채팅과 동일)</li>
+</ol>
+
+<div class="note ok">
+  <strong>핵심 설계:</strong> 음성은 순수한 입력 수단. STT로 텍스트 변환 후 채팅과 동일한 <code>execute_task()</code>. 별도 분기/플래그 없음.
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>3. 함수 체인 (상세)</h2>
+
+<h3>3.1 WS 엔드포인트 진입 — <code>websocket_voice_stream()</code></h3>
+
+<table>
+  <thead>
+    <tr><th>함수</th><th>파일:라인</th><th>역할</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>websocket_voice_stream()</code></td><td><code>supervisor.py:181</code></td><td>WS accept, adapter 생성, receive/send loop parallel 실행 (<code>asyncio.gather</code>)</td></tr>
+    <tr><td><code>receive_loop()</code> (inner)</td><td><code>supervisor.py:205</code></td><td>Browser PCM16 → adapter.send_audio(). JSON "commit" 명령이면 adapter.commit()</td></tr>
+    <tr><td><code>send_loop()</code> (inner)</td><td><code>supervisor.py:225</code></td><td>adapter.listen() 이벤트 수신 → final_transcript 시 execute_task() + browser 응답</td></tr>
+  </tbody>
+</table>
+
+<h3>3.2 Voice Adapter 인터페이스</h3>
+
+<table>
+  <thead>
+    <tr><th>메서드</th><th>역할</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>connect()</code></td><td>STT Provider WebSocket 연결 수립 + 초기 세션 설정</td></tr>
+    <tr><td><code>send_audio(bytes)</code></td><td>PCM16 → base64 → JSON → Provider WS 전송</td></tr>
+    <tr><td><code>listen()</code> → <code>AsyncIterator[dict]</code></td><td>Provider 이벤트 구독, transcript/final_transcript/error 이벤트 yield</td></tr>
+    <tr><td><code>commit()</code></td><td>현재까지 버퍼 강제 전사 트리거 (수동 send 버튼용)</td></tr>
+    <tr><td><code>close()</code></td><td>연결 안전 종료</td></tr>
+  </tbody>
+</table>
+
+<p>파일: <code>voice_adapter_interface.py:4-33</code></p>
+
+<h3>3.3 OpenAI Realtime Adapter</h3>
+
+<table>
+  <thead>
+    <tr><th>함수</th><th>라인</th><th>상세 동작</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>connect()</code></td><td><code>openai_realtime_adapter.py:24</code></td><td>OpenAI Realtime WS 연결 → <code>_update_session()</code> 전송</td></tr>
+    <tr><td><code>_update_session()</code></td><td>openai_realtime_adapter.py:59</td><td>modalities=["text"], input_audio_transcription (Whisper model), server_vad 설정 전송</td></tr>
+    <tr><td><code>send_audio()</code></td><td>openai_realtime_adapter.py:83</td><td><code>{"type":"input_audio_buffer.append", "audio": base64(b"pcm16")}</code></td></tr>
+    <tr><td><code>commit()</code></td><td>openai_realtime_adapter.py:104</td><td><code>input_audio_buffer.commit</code> + <code>response.create</code></td></tr>
+    <tr><td><code>listen()</code></td><td>openai_realtime_adapter.py:117</td><td>이벤트 타입별 분기:
+      <ul>
+        <li><code>input_audio_transcription.completed</code> → <strong>final_transcript</strong> (Whisper 직접 전사, 우선순위 1)</li>
+        <li><code>response.text.delta</code> → partial transcript (fallback)</li>
+        <li><code>response.audio_transcript.done</code> → final_transcript (audio modality fallback)</li>
+        <li><code>error</code> → error 이벤트</li>
+      </ul>
+    </td></tr>
+    <tr><td><code>close()</code></td><td>openai_realtime_adapter.py:170</td><td>WS 닫기</td></tr>
+  </tbody>
+</table>
+
+<h3>3.4 Google Gemini Live Adapter</h3>
+
+<table>
+  <thead>
+    <tr><th>함수</th><th>라인</th><th>상세 동작</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>connect()</code></td><td><code>google_realtime_adapter.py:24</code></td><td>Gemini WS 연결 → <code>_send_setup()</code> → <code>setupComplete</code> 응답 대기</td></tr>
+    <tr><td><code>_send_setup()</code></td><td>google_realtime_adapter.py:50</td><td>model, generation_config, system_instruction, input/output_audio_transcription</td></tr>
+    <tr><td><code>send_audio()</code></td><td>google_realtime_adapter.py:70</td><td><code>{"realtime_input":{"audio":{"mime_type":"audio/pcm;rate=24000", "data":base64(bytes)}}}</code></td></tr>
+    <tr><td><code>commit()</code></td><td>google_realtime_adapter.py:89</td><td><code>{"client_content":{"turns":[], "turn_complete":true}}</code></td></tr>
+    <tr><td><code>listen()</code></td><td>google_realtime_adapter.py:108</td><td>이벤트 분기:
+      <ul>
+        <li><code>inputTranscription</code> 또는 <code>serverContent.inputTranscription</code> → partial transcript</li>
+        <li><code>serverContent.modelTurn</code> 등장 → final_transcript (user_text_buffer flush)</li>
+        <li><code>serverContent.turnComplete</code> → final_transcript (user + assistant)</li>
+        <li><code>error</code> → error 이벤트</li>
+      </ul>
+    </td></tr>
+    <tr><td><code>close()</code></td><td>google_realtime_adapter.py:167</td><td>WS 닫기</td></tr>
+  </tbody>
+</table>
+
+<h3>3.5 execute_task 연결</h3>
+
+<pre><code># 채팅 진입 (supervisor.py:59)
+result = await agent_service.execute_task(params.session_id, params.message, params.request_id)
+
+# 음성 진입 (supervisor.py:236)
+result = await agent_service.execute_task(session_id, transcript, request_id)</code></pre>
+
+<div class="note ok">
+  시그니처 완전 동일. <code>message</code>와 <code>transcript</code> 모두 <code>str</code>. 이후 HITL 평가, 그래프 실행, 하위 에이전트 라우팅 등 모든 로직을 공유한다.
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>4. VAD (Voice Activity Detection) 설정</h2>
+
+<p>OpenAI Realtime Adapter의 <code>_update_session()</code>에서 VAD 파라미터가 설정된다.</p>
+
+<table>
+  <thead>
+    <tr><th>파라미터</th><th>값</th><th>의미</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>threshold</code></td><td>0.4</td><td>발화 감지 민감도. 낮을수록 작은 소리에도 반응. 초기 음소 포착을 위해 0.4로 설정</td></tr>
+    <tr><td><code>prefix_padding_ms</code></td><td>600</td><td>VAD 트리거 전 선녹음 시간. 600ms로 증가시켜 발화 앞부분 손실 방지</td></tr>
+    <tr><td><code>silence_duration_ms</code></td><td>800</td><td>침묵 감지 후 발화 종료 판단 시간</td></tr>
+  </tbody>
+</table>
+
+<p>파일: <code>openai_realtime_adapter.py:73-78</code></p>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>5. Adapter 생성 전략</h2>
+
+<pre><code>adapter = VoiceAdapterFactory.create_adapter()
+
+# 설정 (config.py:74)
+voice_provider: str = "google"  # "openai" 또는 "google"
+
+# 팩토리 로직 (voice_adapter_factory.py)
+if voice_provider == "openai":
+    return OpenAiRealtimeAdapter()
+elif voice_provider == "google":
+    return GoogleRealtimeAdapter()
+</code></pre>
+
+<p>환경 설정만 변경하면 Provider를 스왑할 수 있다. 두 어댑터 동일한 <code>VoiceAdapter</code> 인터페이스 구현.</p>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>6. 데이터 타입 변환 파이프라인</h2>
+
+<svg viewBox="0 0 860 630" style="width:100%;max-width:860px;display:block;margin:0.75rem auto;font-family:system-ui,-apple-system,sans-serif;">
+  <defs>
+    <linearGradient id="pipe-box" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1a1d27"/><stop offset="100%" stop-color="#242837"/></linearGradient>
+    <linearGradient id="pipe-box-accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1f2a35"/><stop offset="100%" stop-color="#1c3850"/>
+    </linearGradient>
+    <linearGradient id="pipe-final" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2a3d20"/><stop offset="100%" stop-color="#3a4a25"/>
+    </linearGradient>
+    <marker id="pipe-arrow" viewBox="0 0 10 10" refX="5" refY="10" markerWidth="5" markerHeight="7" orient="auto"><path d="M0 0 L5 10 L10 0 Z" fill="#4a7fa8"/></marker>
+    <marker id="pipe-arrow-green" viewBox="0 0 10 10" refX="5" refY="10" markerWidth="5" markerHeight="7" orient="auto"><path d="M0 0 L5 10 L10 0 Z" fill="#a3be8c"/></marker>
+    <filter id="pipe-shadow"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/></filter>
+  </defs>
+
+  <rect x="0" y="0" width="860" height="630" rx="8" fill="#131720"/>
+
+  <!-- Header -->
+  <text x="430" y="30" text-anchor="middle" fill="#88c0d0" font-size="13" font-weight="700" letter-spacing="1">DATA TYPE TRANSFORMATION PIPELINE</text>
+
+  <!-- ====== Stage 1: Browser ====== -->
+  <rect x="240" y="50" width="380" height="60" rx="8" fill="url(#pipe-box)" stroke="#3b6b56" stroke-width="1.5" filter="url(#pipe-shadow)"/>
+  <rect x="240" y="50" width="4" height="60" rx="2" fill="#3b6b56"/>
+  <circle cx="270" cy="80" r="14" fill="#3b6b56"/>
+  <text x="270" y="85" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">1</text>
+  <text x="298" y="74" fill="#e5e9f0" font-size="12" font-weight="600">Browser Audio Capture</text>
+  <text x="298" y="94" fill="#8a8fa8" font-size="10">navigator.mediaDevices.getUserMedia() — PCM16 raw samples</text>
+
+  <!-- arrow 1→2 -->
+  <line x1="430" y1="110" x2="430" y2="140" stroke="#4a7fa8" stroke-width="2" marker-end="url(#pipe-arrow)"/>
+  <text x="445" y="129" fill="#6a8a9a" font-size="8">chunk interval (20ms)</text>
+
+  <!-- ====== Stage 2: PCM16 ====== -->
+  <rect x="230" y="142" width="400" height="50" rx="8" fill="url(#pipe-box-accent)" stroke="#4a7fa8" stroke-width="1.5" filter="url(#pipe-shadow)"/>
+  <rect x="230" y="142" width="4" height="50" rx="2" fill="#4a7fa8"/>
+  <circle cx="260" cy="167" r="13" fill="#4a7fa8"/>
+  <text x="260" y="172" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">2</text>
+  <text x="286" y="162" fill="#b8d8f0" font-size="11" font-weight="600">PCM16 Int16Array</text>
+  <text x="286" y="178" fill="#8aaaac" font-size="9">raw samples — 24000Hz, 20ms frames, mono</text>
+
+  <!-- arrow 2→3 -->
+  <line x1="430" y1="192" x2="430" y2="218" stroke="#4a7fa8" stroke-width="2" marker-end="url(#pipe-arrow)"/>
+  <text x="445" y="209" fill="#6a8a9a" font-size="8">WS send binary</text>
+
+  <!-- ====== Stage 3: WS binary ====== -->
+  <rect x="230" y="220" width="400" height="50" rx="8" fill="url(#pipe-box-accent)" stroke="#4a7fa8" stroke-width="1.5" filter="url(#pipe-shadow)"/>
+  <rect x="230" y="220" width="4" height="50" rx="2" fill="#4a7fa8"/>
+  <circle cx="260" cy="245" r="13" fill="#4a7fa8"/>
+  <text x="260" y="250" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">3</text>
+  <text x="286" y="240" fill="#b8d8f0" font-size="11" font-weight="600">WebSocket Binary Message</text>
+  <text x="286" y="256" fill="#8aaaac" font-size="9">Browser → Server — raw bytes over WS</text>
+
+  <!-- arrow 3→4 -->
+  <line x1="430" y1="270" x2="430" y2="296" stroke="#4a7fa8" stroke-width="2" marker-end="url(#pipe-arrow)"/>
+  <text x="445" y="287" fill="#6a8a9a" font-size="8">receive_loop → send_audio()</text>
+
+  <!-- ====== Stage 4: base64 ====== -->
+  <rect x="230" y="298" width="400" height="50" rx="8" fill="url(#pipe-box-accent)" stroke="#b48ead" stroke-width="1.5" filter="url(#pipe-shadow)"/>
+  <rect x="230" y="298" width="4" height="50" rx="2" fill="#b48ead"/>
+  <circle cx="260" cy="323" r="13" fill="#b48ead"/>
+  <text x="260" y="328" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">4</text>
+  <text x="286" y="318" fill="#d8c0e0" font-size="11" font-weight="600">base64 Encoding</text>
+  <text x="286" y="334" fill="#a88ab0" font-size="9">Server-side: bytes → base64 string</text>
+
+  <!-- arrow 4→5 -->
+  <line x1="430" y1="348" x2="430" y2="374" stroke="#b48ead" stroke-width="2" marker-end="url(#pipe-arrow)"/>
+  <text x="445" y="365" fill="#6a8a9a" font-size="8">JSON serialize + WS send</text>
+
+  <!-- ====== Stage 5: JSON ====== -->
+  <rect x="230" y="376" width="400" height="50" rx="8" fill="url(#pipe-box-accent)" stroke="#b48ead" stroke-width="1.5" filter="url(#pipe-shadow)"/>
+  <rect x="230" y="376" width="4" height="50" rx="2" fill="#b48ead"/>
+  <circle cx="260" cy="401" r="13" fill="#b48ead"/>
+  <text x="260" y="406" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">5</text>
+  <text x="286" y="396" fill="#d8c0e0" font-size="11" font-weight="600">JSON Message to STT Provider</text>
+  <text x="286" y="412" fill="#a88ab0" font-size="9">{"type":"input_audio_buffer.append","audio":"base64..."}</text>
+
+  <!-- arrow 5→6 -->
+  <line x1="430" y1="426" x2="430" y2="452" stroke="#b48ead" stroke-width="2" marker-end="url(#pipe-arrow)"/>
+  <text x="445" y="443" fill="#6a8a9a" font-size="8">Whisper / Gemini STT</text>
+
+  <!-- ====== Stage 6: transcript ====== -->
+  <rect x="230" y="454" width="400" height="50" rx="8" fill="url(#pipe-box-accent)" stroke="#ebcb8b" stroke-width="1.5" filter="url(#pipe-shadow)"/>
+  <rect x="230" y="454" width="4" height="50" rx="2" fill="#ebcb8b"/>
+  <circle cx="260" cy="479" r="13" fill="#ebcb8b"/>
+  <text x="260" y="484" text-anchor="middle" fill="#1a1d27" font-size="10" font-weight="700">6</text>
+  <text x="286" y="474" fill="#f0e0a0" font-size="11" font-weight="600">Text Transcript — string</text>
+  <text x="286" y="490" fill="#c8b060" font-size="9">{"type":"final_transcript","text":"..."}</text>
+
+  <!-- ====== Final: execute_task ====== -->
+  <line x1="430" y1="504" x2="430" y2="520" stroke="#a3be8c" stroke-width="2" marker-end="url(#pipe-arrow-green)"/>
+
+  <rect x="280" y="522" width="300" height="62" rx="10" fill="url(#pipe-final)" stroke="#a3be8c" stroke-width="2" filter="url(#pipe-shadow)"/>
+  <text x="430" y="548" text-anchor="middle" fill="#e0f0c0" font-size="12" font-weight="700">agent_service.execute_task(</text>
+  <text x="430" y="570" text-anchor="middle" fill="#a3be8c" font-size="11">session_id, transcript, request_id</text>
+  <text x="430" y="582" text-anchor="middle" fill="#8aaaac" font-size="9">)</text>
+</svg>
+
+<div class="note ok">
+  변환 체인: <strong>Browser PCM16</strong> → <strong>WS Binary</strong> → <strong>base64</strong> → <strong>JSON</strong> → <strong>STT Model</strong> → <strong>text string</strong> → <strong>execute_task()</strong>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>7. 오류 처리</h2>
+
+<table>
+  <thead>
+    <tr><th>시나리오</th><th>처리</th><th>파일</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Adapter 생성 실패 (API key 없음 등)</td><td><code>{"type":"error","message":"Voice provider not available"}</code> → WS close</td><td><code>supervisor.py:196-200</code></td></tr>
+    <tr><td>Browser 연결 해제 (receive_loop)</td><td><code>WebSocketDisconnect</code> catch, 로그만 남기고 루프 종료</td><td><code>supervisor.py:219-220</code></td></tr>
+    <tr><td>Browser 연결 해제 (send_loop)</td><td>같은 처리 + <code>"websocket.send"</code> 에러도 함류</td><td><code>supervisor.py:251-256</code></td></tr>
+    <tr><td>JSON parse 실패 (text message)</td><td><code>json.JSONDecodeError</code> → pass</td><td><code>supervisor.py:217</code></td></tr>
+    <tr><td>STT Provider WS 종료</td><td><code>ConnectionClosed</code> → listen loop 정상 종료</td><td>adapter별 listen()</td></tr>
+    <tr><td>빈 transcript</td><td><code>if transcript:</code> → execute_task skip</td><td><code>supervisor.py:231</code></td></tr>
+    <tr><td>Client 연결 끊긴 상태 send</td><td><code>websocket.client_state != "CONNECTED"</code> → send skip, break</td><td><code>supervisor.py:246-250</code></td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>8. 채팅과 음성 비교 요약</h2>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <h4>채팅 (POST /a2a/supervisor)</h4>
+    <p>HTTP JSON-RPC. <code>message/send</code> 메서드.<br>요청: <code>{"jsonrpc":"2.0","method":"message/send","params":{"session_id":"...","message":"..."}}</code><br>응답: JSON-RPC Response<br>프론트: <code>app.js</code></p>
+  </div>
+  <div class="summary-card">
+    <h4>음성 (WS /a2a/supervisor/voice/stream)</h4>
+    <p>WebSocket. PCM16 binary.<br>Browser → Server: audio chunks (binary) + commit (JSON)<br>Server → Browser: transcript events (JSON)<br>프론트: <code>voice.js</code><br>STT 완료 후 <code>execute_task()</code> 자동 트리거</p>
+  </div>
+</div>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <h4>공통</h4>
+    <p><code>execute_task(session_id, text, request_id)</code><br>→ HITL 평가<br>→ Supervisor Graph 실행<br>→ 하위 에이전트 라우팅<br>→ SSE 이벤트 스트리밍</p>
+  </div>
+  <div class="summary-card">
+    <h4>차이</h4>
+    <p>입력 방식 (text vs audio).<br>STT 레이어 유무.<br>프로토콜 (HTTP vs WS).<br>실시간성 (음성은 chunk streaming).</p>
+  </div>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>9. 관련 파일 인덱스</h2>
+
+<table>
+  <thead>
+    <tr><th>파일</th><th>설명</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>src/supervisor_agent/app/api/supervisor.py</code></td><td>WS endpoint (<code>websocket_voice_stream</code>, line 181). receive/send loop. execute_task 호출.</td></tr>
+    <tr><td><code>src/supervisor_agent/app/adapters/llm/voice_adapter_interface.py</code></td><td>VoiceAdapter ABC (connect/send_audio/listen/commit/close)</td></tr>
+    <tr><td><code>src/supervisor_agent/app/adapters/llm/voice_adapter_factory.py</code></td><td>VoiceAdapterFactory — provider(name) → Adapter 인스턴스</td></tr>
+    <tr><td><code>src/supervisor_agent/app/adapters/llm/openai_realtime_adapter.py</code></td><td>OpenAI Realtime API STT 구현</td></tr>
+    <tr><td><code>src/supervisor_agent/app/adapters/llm/google_realtime_adapter.py</code></td><td>Google Gemini Live API STT 구현</td></tr>
+    <tr><td><code>src/supervisor_agent/app/core/config.py</code></td><td>voice_provider, openai_realtime_*, google_* 설정</td></tr>
+    <tr><td><code>src/supervisor_agent/app/static/js/voice.js</code></td><td>프론트엔드: getUserMedia → PCM16 → WebSocket 전송</td></tr>
+    <tr><td><code>src/supervisor_agent/app/static/js/app.js</code></td><td>프론트엔드: 채팅 send() + SSE 구독</td></tr>
+  </tbody>
+</table>
+</section>
+
+<footer>
+  STT Process Document — smart-supervisor-sub-agent
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Implementation Architecture Code Review Report</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242837;
+    --border: #2e3440;
+    --text: #e5e9f0;
+    --text-dim: #8a8fa8;
+    --accent: #88c0d0;
+    --accent2: #a3be8c;
+    --accent3: #bf616a;
+    --accent4: #ebcb8b;
+    --purple: #b48ead;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+
+  header {
+    padding: 2rem 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2.5rem;
+  }
+  header h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  header .verdict {
+    display: inline-block;
+    padding: 0.35rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-top: 0.75rem;
+    background: rgba(235, 203, 139, 0.15);
+    color: var(--accent4);
+    border: 1px solid var(--accent4);
+  }
+
+  .meta {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    padding: 1rem 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .meta span strong { color: var(--text); }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+  }
+  section h2 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  section h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+  }
+
+  p { margin-bottom: 0.75rem; }
+  ul, ol { margin: 0.5rem 0 0.75rem 1.5rem; }
+  li { margin-bottom: 0.3rem; }
+
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85em;
+    background: var(--surface2);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    color: var(--accent4);
+  }
+  pre {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin: 0.75rem 0;
+  }
+  pre code { background: none; padding: 0; color: var(--text); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    font-size: 0.85rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+  }
+  th { background: var(--surface2); font-weight: 600; color: var(--accent); }
+  td { background: var(--surface); }
+
+  .status { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .status-ok { background: rgba(163, 190, 140, 0.2); color: var(--accent2); }
+  .status-partial { background: rgba(235, 203, 139, 0.2); color: var(--accent4); }
+  .status-fail { background: rgba(191, 97, 106, 0.2); color: var(--accent3); }
+
+  .finding {
+    padding: 1rem;
+    border-radius: 6px;
+    margin: 0.75rem 0;
+    border-left: 3px solid;
+  }
+  .finding.major { background: rgba(191, 97, 106, 0.08); border-left-color: var(--accent3); }
+  .finding.minor { background: rgba(235, 203, 139, 0.08); border-left-color: var(--accent4); }
+
+  .finding h4 { margin-bottom: 0.5rem; font-size: 0.95rem; }
+  .finding.major h4 { color: var(--accent3); }
+  .finding.minor h4 { color: var(--accent4); }
+  .finding p { font-size: 0.85rem; margin: 0.25rem 0; }
+  .finding .label { font-size: 0.75rem; font-weight: 600; color: var(--text-dim); }
+
+  .action-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+  }
+  .action-item {
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    border-left: 3px solid var(--accent2);
+  }
+  .action-item strong { color: var(--accent2); display: block; margin-bottom: 0.25rem; }
+
+  footer {
+    text-align: center;
+    padding: 2rem 0;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+  }
+
+  @media (max-width: 640px) {
+    body { padding: 1rem; }
+    .action-list { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>Implementation Architecture Code Review Report</h1>
+  <p>소스 구현 대 아키텍처 기준선 간 정합성 리뷰</p>
+  <div class="verdict">Verdict: Architecture-Aligned With Gaps</div>
+</header>
+
+<div class="meta">
+  <span>검토일: <strong>2026-04-27</strong></span>
+  <span>대상: <strong>src/supervisor-agent</strong></span>
+  <span>아키텍처 기준선: <strong>a2a-host_agent-architecture (Docs 06, 17, 19, 20, 26, 29, 30, 31, 32)</strong></span>
+</div>
+
+<!-- ================================================================ -->
+<section>
+<h2>1. Review Scope</h2>
+<ul>
+  <li><strong>Implementation:</strong> <code>src/supervisor-agent</code></li>
+  <li><strong>Architecture Baseline:</strong> <code>a2a-host_agent-architecture</code> (Docs 06, 17, 19, 20, 26, 29, 30, 31, 32)</li>
+  <li><strong>Checklist:</strong> <code>IMPLEMENTATION_EXECUTION_CHECKLIST.md</code></li>
+</ul>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>2. Architecture Compliance Summary</h2>
+
+<p>구현은 Python 기반 Supervisor 아키텍처를 충실히 따르고 있다. <code>SupervisorAgentService</code>, <code>HitlGateService</code>, <code>ExecutionConsistencyCoordinator</code>, <code>TaskEventStreamService</code> 등 핵심 컴포넌트는 책임 분리 원칙(Doc 30)을 잘 준수하고 있다. 다만 검증 로직, 해시 계산 상세, Drift Policy 구현에 일부 Gap이 존재한다.</p>
+
+<table>
+  <thead>
+    <tr><th>Item</th><th>Status</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Review Decide Contract</td><td><span class="status status-ok">Implemented</span></td><td><code>tasks/review/decide</code> handles APPROVE/CANCEL</td></tr>
+    <tr><td>Approve Verification</td><td><span class="status status-partial">Partially Implemented</span></td><td>Hash verification and drift checks need enhancement</td></tr>
+    <tr><td>STREAM Approve Resume Ordering</td><td><span class="status status-ok">Implemented</span></td><td>CAS → initial_cursor → execute flow is correct</td></tr>
+    <tr><td>Task Event Replay</td><td><span class="status status-ok">Implemented</span></td><td>Redis Stream based replay with CURSOR_EXPIRED handling</td></tr>
+    <tr><td>Audit And Logging</td><td><span class="status status-ok">Implemented</span></td><td>structlog used for state transitions and errors</td></tr>
+    <tr><td>Tests</td><td><span class="status status-partial">Pending</span></td><td>Needs integration tests for race conditions</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>3. Checklist-by-Checklist Review</h2>
+
+<h3>Review Decide Contract (Doc 26, 20)</h3>
+<p><span class="status status-ok">Implemented</span></p>
+<p><code>api/supervisor.py</code> implements <code>tasks/review/decide</code> with APPROVE/CANCEL decisions. Standard results like <code>ReviewApproveAck</code> are returned.</p>
+
+<h3>Approve Verification (Doc 31, 29)</h3>
+<p><span class="status status-partial">Partially Implemented</span></p>
+<p><strong>Gaps:</strong></p>
+<ul>
+  <li><code>SnapshotVerificationQuery</code> misses <code>frozen_plan_hash</code> verification</li>
+  <li>Drift policy (Doc 31) check for route/method allowlist and agent status is missing</li>
+  <li><code>PlanHashCalculator</code> uses a simplified payload for hashing</li>
+</ul>
+
+<h3>STREAM Approve Resume Ordering (Doc 31, 26)</h3>
+<p><span class="status status-ok">Implemented</span></p>
+<p><code>ApprovedResumeStrategy</code> correctly coordinates CAS transition via <code>ExecutionConsistencyCoordinator</code> and then fetches <code>initial_cursor</code> from <code>TaskEventStreamService</code>.</p>
+
+<h3>Task Event Replay (Doc 26, 31)</h3>
+<p><span class="status status-ok">Implemented</span></p>
+<p><code>TaskEventStreamService</code> uses Redis Streams IDs as cursors, ensuring durable replay. <code>subscribe</code> method correctly checks for <code>CURSOR_EXPIRED</code>.</p>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>4. Findings</h2>
+
+<div class="finding major">
+  <h4>[Major] Frozen Plan Hash Verification Missing</h4>
+  <p><span class="label">File:</span> <code>src/supervisor-agent/app/application/read/read_queries.py</code></p>
+  <p><strong>Description:</strong> <code>SnapshotVerificationQuery</code> does not verify <code>frozen_plan_hash</code>.</p>
+  <p><strong>Impact:</strong> Compromises review integrity; if the plan was modified after freezing but before approval, it wouldn't be caught.</p>
+  <p><strong>Action:</strong> Add <code>frozen_plan_hash</code> verification using <code>PlanHashCalculator</code>.</p>
+</div>
+
+<div class="finding major">
+  <h4>[Major] Plan Drift Blocked Implementation Missing</h4>
+  <p><span class="label">File:</span> <code>src/supervisor-agent/app/application/read/read_queries.py</code></p>
+  <p><strong>Description:</strong> Doc 31 requires re-verifying route/method allowlists and agent status at approval time.</p>
+  <p><strong>Impact:</strong> Potential security or operational risk if an agent was disabled after the plan was frozen.</p>
+  <p><strong>Action:</strong> Implement drift check logic in <code>SnapshotVerificationQuery</code>.</p>
+</div>
+
+<div class="finding minor">
+  <h4>[Minor] Hash Payload Inconsistency</h4>
+  <p><span class="label">File:</span> <code>src/supervisor-agent/app/common/utils/canonical_json.py</code></p>
+  <p><strong>Description:</strong> <code>PlanHashCalculator</code> uses a subset of fields compared to Doc 31 requirements.</p>
+  <p><strong>Action:</strong> Update hash payload to include <code>schema_version</code>, <code>execution_constraints</code>, etc.</p>
+</div>
+
+<div class="finding minor">
+  <h4>[Minor] Resume Token Verification Missing</h4>
+  <p><span class="label">File:</span> <code>src/supervisor-agent/app/application/read/read_queries.py</code></p>
+  <p><strong>Description:</strong> <code>resume_token</code> is present in the model but not checked during verification.</p>
+  <p><strong>Action:</strong> Add <code>resume_token</code> equality check.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>5. Refactoring / Follow-up Actions</h2>
+
+<div class="action-list">
+  <div class="action-item">
+    <strong>PlanHashCalculator 업데이트</strong>
+    모든 필수 필드 포함하도록 hashing payload 확장 (Doc 31)
+  </div>
+  <div class="action-item">
+    <strong>SnapshotVerificationQuery 강화</strong>
+    frozen_plan_hash, resume_token, Drift Policy 체크 추가
+  </div>
+  <div class="action-item" style="grid-column: 1 / -1;">
+    <strong>HitlGateService 업데이트</strong>
+    frozen_plan_hash 생성을 위해 전체 plan 사용하도록 수정
+  </div>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>6. Final Verdict</h2>
+
+<div style="text-align:center;padding:1.5rem;background:var(--surface2);border-radius:8px;border:2px solid var(--accent4);">
+  <p style="font-size:1.2rem;font-weight:700;color:var(--accent4);margin:0;">Architecture-Aligned With Gaps</p>
+  <p style="color:var(--text-dim);margin-top:0.5rem;font-size:0.9rem;">Foundation is solid, but security/integrity verification details need to be strictly aligned with the "FrozenExecutionPlan" specification.</p>
+</div>
+</section>
+
+<footer>
+  Implementation Architecture Code Review Report — Smart Supervisor Sub-Agent
+</footer>
+
+</div>
+</body>
+</html>

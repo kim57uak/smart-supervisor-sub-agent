@@ -1,3 +1,21 @@
+"""
+[Sub-Agent] 에이전트 실행 오케스트레이터
+=========================================
+책임: 태스크 실행의 전체 생명주기 관리 (상태 천이 + 엔진 호출 + 이벤트 발행)
+아키텍처 위치: Application Layer — Execution
+
+실행 흐름:
+  1. 사용자 메시지 저장 (history)
+  2. 상태 RUNNING으로 천이 + PROGRESS 이벤트 발행
+  3. OrchestrationEngine.execute() → LangGraph/Burr 그래프 실행
+  4. 완료 결과 저장 + DONE 이벤트 발행
+  5. 실패 시 ERROR 이벤트 발행 후 예외 재throws
+
+예외 처리:
+  - engine.execute() 실패 시 ERROR 이벤트 발행 후 상위(NACK 처리)로 전파
+  - 각 단계마다 ProgressPublisher를 통해 Supervisor에 실시간 상태 전달
+"""
+
 import structlog
 from typing import Dict, Any
 from app.core.config import settings
@@ -10,8 +28,8 @@ logger = structlog.get_logger(__name__)
 
 class AgentExecutor:
     """
-    Orchestrates the execution of sub-agent tasks using an abstract engine (LangGraph or Burr).
-    Ensures mandatory Trace ID propagation (Document 02).
+    서브에이전트 태스크 실행 오케스트레이터.
+    Engine(추상화) + Persistence + Publisher를 조합하여 실행.
     """
     def __init__(
         self,
@@ -24,6 +42,10 @@ class AgentExecutor:
         self.publisher = publisher
 
     async def execute(self, session_id: str, task_id: str, message: str, trace_id: str = "unknown"):
+        """
+        전체 실행 생명주기:
+          save_message → update_status(RUNNING) → engine.execute → complete_task → DONE
+        """
         log = logger.bind(trace_id=trace_id, task_id=task_id, session_id=session_id)
         log.info("execution_started", engine=settings.orchestration_engine)
 
@@ -34,7 +56,7 @@ class AgentExecutor:
         raw_history = await self.persistence.store.get_messages(session_id, limit=20)
         history = [Message(role=h.get("role", AgentRole.USER.value), content=h.get("content", "")) for h in raw_history]
 
-        # 1. Initialize State
+        # 초기 상태 생성
         initial_state = {
             "task_id": task_id,
             "session_id": session_id,
@@ -48,7 +70,6 @@ class AgentExecutor:
         }
 
         try:
-            # 2. Update status to RUNNING (Command via Persistence)
             await self.persistence.update_status(task_id, ProcessStatus.RUNNING)
             
             await self.publisher.publish(session_id, task_id, {
@@ -56,11 +77,10 @@ class AgentExecutor:
                 "payload": {"status": ProcessStatus.RUNNING.value}
             }, trace_id=trace_id)
 
-            # 3. Invoke Abstract Engine (LangGraph or Burr)
-            # Rationale (Why): Abstraction allows framework flexibility (e.g., Burr's better state visualization).
+            # 엔진 실행 (LangGraph 또는 Burr)
             final_state = await self.engine.execute(session_id, task_id, initial_state)
 
-            # 4. Finalize Task (Command via Persistence)
+            # 완료 처리
             execution_result = AgentExecutionResult(
                 task_id=task_id,
                 final_answer=final_state.get("final_answer", ""),

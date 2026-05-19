@@ -11,13 +11,17 @@ from ...domain.enums import AgentRole
 
 logger = structlog.get_logger(__name__)
 
+# ──────────────────────────────────────────────
+# LLM Planner — 도구 실행 계획 수립
+# ──────────────────────────────────────────────
+# Planner 포트의 LLM 기반 구현체.
+# 사용자 메시지와 가용 MCP 도구 목록을 LLM에 전달하여 ToolPlan 목록을 생성한다.
+# 출력 예: [{"tool": "reservation/createReservation", "server": "reservation", ...}]
 class LlmPlanner(Planner):
-    """
-    LLM implementation of the Planner port.
-    """
     def __init__(self):
         self.model = LlmRuntime.get_chat_model()
 
+    # PlanningContext.history에서 가장 최근 사용자 메시지 추출
     @staticmethod
     def _extract_user_message(context: PlanningContext) -> str:
         for m in reversed(context.history):
@@ -25,6 +29,9 @@ class LlmPlanner(Planner):
                 return m.content
         return ""
 
+    # LLM 계획 수립 실행
+    # system_prompt에 도구 카탈로그(serverCatalog), 실행 이력, 사용자 메시지를 포함한다.
+    # LLM 응답에서 JSON 객체({plans: [...]})를 파싱하여 ToolPlan 리스트로 변환한다.
     async def plan(self, context: PlanningContext) -> List[ToolPlan]:
         prompts = settings.prompts
         agent_system = prompts.get("agent-system", "")
@@ -55,6 +62,7 @@ class LlmPlanner(Planner):
             
             logger.debug("llm_planning_raw_response", content=raw_content)
             
+            # ```json ... ``` 마크다운 코드 블록 제거
             if "```json" in raw_content:
                 raw_content = raw_content.split("```json")[1].split("```")[0].strip()
             
@@ -80,32 +88,35 @@ class LlmPlanner(Planner):
             logger.error("planning_failed", error=str(e))
             return []
 
+# ──────────────────────────────────────────────
+# LLM Composer — 최종 응답 생성
+# ──────────────────────────────────────────────
+# Composer 포트의 LLM 기반 구현체.
+# 도구 실행 결과(tool_results)를 바탕으로 최종 사용자 응답을 스트리밍 생성한다.
+# AiChatChunk 단위로 스트리밍 출력한다.
 class LlmComposer(Composer):
-    """
-    LLM implementation of the Composer port.
-    """
     def __init__(self):
         self.model = LlmRuntime.get_chat_model()
 
     @staticmethod
     def _extract_user_message(context: PlanningContext) -> str:
-        # Compose 단계는 history 전체를 전달하지 않고 사용자 메시지만 사용한다.
+        # Compose 단계에서는 전체 history가 아닌 사용자 메시지만 사용한다.
         for m in reversed(context.history):
             if m.role == AgentRole.USER.value:
                 return m.content
         return ""
 
+    # 스트리밍 응답 생성
+    # system_prompt에 baseSystem, composeRules, toolResult(실행 결과)를 포함하여 LLM에 전달한다.
+    # astream()의 각 청크를 AiChatChunk로 변환하여 상위 계층(ProgressPublisher)으로 전달한다.
     async def stream_compose(self, context: PlanningContext) -> AsyncIterator[AiChatChunk]:
-        """
-        Yields AiChatChunk objects as per Document 18.
-        """
         prompts = settings.prompts
         base_system = prompts.get("system", "")
         final_answer = prompts.get("final-answer", "")
         compose_rules = prompts.get("compose-rules", "")
         template = prompts.get("compose-prompt-template", "")
 
-        # Rationale (Why): Composition requires actual tool execution results to provide a grounded answer.
+        # 도구 실행 결과(tool_results)를 JSON 문자열로 변환하여 컨텍스트에 포함
         tool_results_str = json.dumps(context.tool_results, ensure_ascii=False) if context.tool_results else "N/A"
 
         system_prompt = template.format(
@@ -122,5 +133,5 @@ class LlmComposer(Composer):
         ]
         
         async for chunk in self.model.astream(messages):
-            # Rationale (Why): Unifying internal results to AiChatChunk (Doc 18).
+            # 내부 LLM 청크 → 도메인 모델(AiChatChunk) 변환
             yield AiChatChunk(content=chunk.content)

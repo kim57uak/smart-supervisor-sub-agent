@@ -9,6 +9,12 @@ from ..mcp.mcp_tool_registry import McpToolRegistry
 
 logger = structlog.get_logger(__name__)
 
+# ──────────────────────────────────────────────
+# LangGraph 상태 타입 정의
+# ──────────────────────────────────────────────
+# LangGraph StateGraph가 관리하는 전체 상태 구조.
+# 각 노드는 이 상태의 일부를 읽고 쓰며 그래프를 따라 전파된다.
+# loop_count는 반복 실행 횟수를 추적하여 max_tool_iterations 제한에 사용된다.
 class AgentState(TypedDict):
     task_id: str
     session_id: str
@@ -21,11 +27,13 @@ class AgentState(TypedDict):
     status: ProcessStatus
     loop_count: int
 
+# ──────────────────────────────────────────────
+# LangGraph 워크플로우 팩토리
+# ──────────────────────────────────────────────
+# Planner(도구 선택) → Executor(도구 실행) → Composer(응답 생성)로 이어지는
+# 에이전트 실행 파이프라인을 StateGraph로 구축한다.
+# 각 노드는 ProgressPublisher를 통해 실시간 진행 상태를 Redis Pub/Sub으로 발행한다.
 class WorkflowFactory:
-    """
-    Factory for creating the LangGraph state machine for sub-agent.
-    Implements the Workflow creation logic.
-    """
     def __init__(
         self,
         planner: Planner,
@@ -41,17 +49,21 @@ class WorkflowFactory:
         self.registry = registry
         self.max_iterations = settings.agent.graph.max_tool_iterations
 
+    # 5개 노드로 구성된 LangGraph StateGraph 생성
+    #
+    # load_context → select_tools ─┬─(continue)→ execute_tools → finalize_context → compose_response → END
+    #                              └─(end)────→ compose_response → END
+    #
+    # select_tools에서 plans가 비어있거나 최대 반복 초과 시 compose_response로 바로 이동한다.
     def create_graph(self) -> StateGraph:
         workflow = StateGraph(AgentState)
 
-        # 1. Define Nodes
         workflow.add_node("load_context", self._load_context)
         workflow.add_node("select_tools", self._select_tools)
         workflow.add_node("execute_tools", self._execute_tools)
         workflow.add_node("finalize_context", self._finalize_context)
         workflow.add_node("compose_response", self._compose_response)
 
-        # 2. Define Edges
         workflow.set_entry_point("load_context")
         workflow.add_edge("load_context", "select_tools")
         
@@ -70,11 +82,14 @@ class WorkflowFactory:
 
         return workflow.compile()
 
+    # 조건부 분기: plans 존재 + 반복 횟수 제한 검사
     def _should_continue(self, state: AgentState) -> str:
         if not state.get("plans") or state.get("loop_count", 0) >= self.max_iterations:
             return "end"
         return "continue"
 
+    # [노드 ①] 실행 문맥 로드
+    # 기존 history가 있으면 재사용, 없으면 user_message로 초기 Message 생성
     async def _load_context(self, state: AgentState) -> Dict[str, Any]:
         await self.publisher.publish(state["session_id"], state["task_id"], {
             "event_type": EventType.PROGRESS.value,
@@ -88,13 +103,14 @@ class WorkflowFactory:
             "loop_count": 0
         }
 
+    # [노드 ②] 도구 선택 (Planner 호출)
+    # McpToolRegistry에서 가용 도구 스키마를 조회하고 Planner.plan()을 호출한다.
     async def _select_tools(self, state: AgentState) -> Dict[str, Any]:
         await self.publisher.publish(state["session_id"], state["task_id"], {
             "event_type": EventType.PLANNING.value,
             "payload": {"message": "도구 실행 계획 수립 중...", "iteration": state.get("loop_count", 0) + 1}
         }, trace_id=state["trace_id"])
         
-        # Rationale (Why): Planner must know about available tools to make a decision.
         available_tools = self.registry.get_tool_schemas()
         context = PlanningContext(
             session_id=state["session_id"], 
@@ -108,6 +124,10 @@ class WorkflowFactory:
             "loop_count": state.get("loop_count", 0) + 1
         }
 
+    # [노드 ③] 도구 실행 (Executor 호출)
+    # 각 ToolPlan을 순차적으로 실행하고 결과를 results에 누적한다.
+    # runtime_fields(session_id, trace_id, task_id)를 전달하여 Schema Guard의
+    # 필드 주입(GUID, session_id 등)이 동작하도록 한다.
     async def _execute_tools(self, state: AgentState) -> Dict[str, Any]:
         results = list(state.get("results", []))
         for plan in state["plans"]:
@@ -115,7 +135,6 @@ class WorkflowFactory:
                 "event_type": EventType.EXECUTING_TOOL.value,
                 "payload": {"tool": plan.tool_name, "message": f"도구 실행 중: {plan.tool_name}"}
             }, trace_id=state["trace_id"])
-            # Rationale (Why): execute() implementation only expects 'plan'.
             result = await self.executor.execute(
                 plan,
                 runtime_fields={
@@ -131,6 +150,8 @@ class WorkflowFactory:
             }, trace_id=state["trace_id"])
         return {"results": results}
 
+    # [노드 ④] 실행 결과 정리
+    # 성공한 도구 실행 결과를 history에 Message(TOOL role)로 추가한다.
     async def _finalize_context(self, state: AgentState) -> Dict[str, Any]:
         await self.publisher.publish(state["session_id"], state["task_id"], {
             "event_type": EventType.PROGRESS.value,
@@ -144,6 +165,9 @@ class WorkflowFactory:
         
         return {"history": new_history}
 
+    # [노드 ⑤] 최종 응답 생성 (Composer 호출)
+    # Composer.stream_compose()를 호출하여 스트리밍 응답을 수집한다.
+    # 각 청크는 실시간으로 ProgressPublisher를 통해 클라이언트에 전달된다.
     async def _compose_response(self, state: AgentState) -> Dict[str, Any]:
         await self.publisher.publish(state["session_id"], state["task_id"], {
             "event_type": EventType.COMPOSING.value,

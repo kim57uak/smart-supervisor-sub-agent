@@ -1,3 +1,18 @@
+"""
+[Sub-Agent] A2A Discovery 엔드포인트 — Agent Card 조회
+=======================================================
+책임: /.well-known/agent-card.json 경로로 서브에이전트의 Agent Card 제공
+아키텍처 위치: API Layer — A2A Protocol (Discovery)
+
+A2A 표준: 슈퍼바이저 에이전트가 서브에이전트를 검색할 때 사용
+  - 각 AgentCard는 name + description + capabilities + skills + endpoints 포함
+  - LLM 라우팅 정확도를 향상시키기 위해 description에 구체적인 용어 사용
+  - '판매상품코드' 같은 특정 도메인 용어를 포함하여 검색 정확도 개선
+
+엔드포인트:
+  GET /.well-known/agent-card.json
+"""
+
 from fastapi import APIRouter
 from ...schemas.a2a import AgentCard, AgentSkill, AgentEndpoints
 from ...core.config import settings
@@ -7,11 +22,9 @@ router = APIRouter()
 @router.get("/agent-card.json")
 async def get_agent_cards():
     """
-    Returns the list of agent cards hosted by this server.
-    Implements Document 22 (Canonical discovery path).
+    서브에이전트가 제공하는 모든 Agent Card 목록 반환.
+    각 카드는 name/description/capabilities/skills/endpoints 포함.
     """
-    # Rationale (Why): Updated descriptions and skills to include specific terms like '판매상품코드' and '검색' 
-    # to improve LLM routing accuracy when users search for product codes.
     cards = [
         AgentCard(
             name="product",

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Supervisor &amp; A2A Multi-Agent System</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242837;
+    --border: #2e3440;
+    --text: #e5e9f0;
+    --text-dim: #8a8fa8;
+    --accent: #88c0d0;
+    --accent2: #a3be8c;
+    --accent3: #bf616a;
+    --accent4: #ebcb8b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+
+  header {
+    padding: 2rem 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2.5rem;
+  }
+  header h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  header p {
+    color: var(--text-dim);
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  .meta {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    padding: 1rem 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .meta span strong { color: var(--text); }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+  }
+  section h2 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  section h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+  }
+
+  p { margin-bottom: 0.75rem; }
+  ul, ol { margin: 0.5rem 0 0.75rem 1.5rem; }
+  li { margin-bottom: 0.3rem; }
+
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85em;
+    background: var(--surface2);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    color: var(--accent4);
+  }
+  pre {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin: 0.75rem 0;
+  }
+  pre code { background: none; padding: 0; color: var(--text); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    font-size: 0.85rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+  }
+  th { background: var(--surface2); font-weight: 600; color: var(--accent); }
+  td { background: var(--surface); }
+
+  .note {
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    border-left: 3px solid var(--accent);
+    background: rgba(136, 192, 208, 0.08);
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    margin: 0.75rem 0;
+  }
+  .feature-card {
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 1rem;
+  }
+  .feature-card h4 { color: var(--accent); margin-bottom: 0.5rem; font-size: 0.95rem; }
+  .feature-card p { font-size: 0.83rem; color: var(--text-dim); margin: 0; }
+
+  footer {
+    text-align: center;
+    padding: 2rem 0;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+  }
+
+  @media (max-width: 640px) {
+    body { padding: 1rem; }
+    .feature-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>Smart Supervisor &amp; A2A Multi-Agent System</h1>
+  <p>초정밀 A2A (Agent-to-Agent) 오케스트레이션 엔진 — 엔터프라이즈급 멀티 에이전트 시스템</p>
+</header>
+
+<div class="meta">
+  <span>버전: <strong>v2.5</strong></span>
+  <span>최종 업데이트: <strong>2026-05-04</strong></span>
+  <span>Python: <strong>3.11</strong></span>
+  <span>Queue: <strong>Redis Reliable</strong></span>
+</div>
+
+<!-- ================================================================ -->
+<section>
+<h2>주요 특징 (Key Features)</h2>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <h4>통합 음성 오케스트레이션</h4>
+    <p>Server-Side Trigger: 음성 인식 완료 시 브라우저 거치지 않고 서버에서 즉시 에이전트 작업 실행. OpenAI Realtime API 기반 실시간 STT 스트리밍.</p>
+  </div>
+  <div class="feature-card">
+    <h4>엔터프라이즈급 신뢰성</h4>
+    <p>Redis BRPOPLPUSH 패턴으로 At-Least-Once 작업 전달 보장. CAS(Compare-And-Set)로 분산 환경 상태 정합성 유지. 소켓 타임아웃 20s 최적화.</p>
+  </div>
+  <div class="feature-card">
+    <h4>지능형 계획 및 관리</h4>
+    <p>prompts.yml 중앙 프롬프트 관리. HITL(Human-In-The-Loop) 정책 게이트. Circuit Breaker로 장애 에이전트 자동 차단.</p>
+  </div>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>프로젝트 구조 (Project Structure)</h2>
+
+<table>
+  <thead>
+    <tr><th>디렉토리/파일</th><th>설명</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>src/supervisor-agent/</code></td><td>시스템의 중앙 관제 및 오케스트레이션을 담당하는 마스터 에이전트</td></tr>
+    <tr><td><code>src/sub-agent/</code></td><td>MCP 도구와 연동하여 실질적인 업무를 수행하는 실행형 에이전트</td></tr>
+    <tr><td><code>a2a-host_agent-architecture/</code></td><td>시스템의 상세 시퀀스 및 아키텍처 문서군</td></tr>
+    <tr><td><code>DETAILED_FUNCTION_FLOW.md</code></td><td>UI부터 DB까지의 모든 함수 단위 실행 흐름도</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>시작하기 (Quick Start)</h2>
+
+<h3>1. 가상환경 및 의존성 구축</h3>
+<p>모든 서비스는 프로젝트 루트의 통합 가상환경(<code>.venv</code>)에서 실행. Supervisor 의존성을 기준으로 환경 구축.</p>
+
+<pre><code># 가상환경 생성
+python3 -m venv .venv
+
+# 가상환경 활성화
+source .venv/bin/activate
+
+# 슈퍼바이저 기준 의존성 설치
+pip install -r src/supervisor-agent/requirements.txt</code></pre>
+
+<h3>2. 서비스 기동</h3>
+<pre><code>./start_all.sh</code></pre>
+
+<h3>3. 기능 검증</h3>
+<pre><code>python verify_session_id_e2e.py</code></pre>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>관련 문서 (Documentation)</h2>
+<ul>
+  <li><strong>아키텍처 가이드</strong>: <code>AGENT.md</code></li>
+  <li><strong>음성 인식 시퀀스</strong>: <code>a2a-host_agent-architecture/33-voice-integrated-orchestration-sequence.puml</code></li>
+  <li><strong>구현 상세 명세</strong>: <code>DETAILED_FUNCTION_FLOW.md</code></li>
+</ul>
+</section>
+
+<footer>
+  Smart Supervisor &amp; A2A Multi-Agent System — v2.5 (Voice Integrated Standard)
+</footer>
+
+</div>
+</body>
+</html>

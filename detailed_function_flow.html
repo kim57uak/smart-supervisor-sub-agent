@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>초정밀 기능 실행 흐름도 — Detailed Function Flow</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242837;
+    --surface3: #2d3348;
+    --border: #2e3440;
+    --text: #e5e9f0;
+    --text-dim: #8a8fa8;
+    --accent: #88c0d0;
+    --accent2: #a3be8c;
+    --accent3: #bf616a;
+    --accent4: #ebcb8b;
+    --purple: #b48ead;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  header {
+    padding: 2rem 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2.5rem;
+  }
+  header h1 { font-size: 1.6rem; font-weight: 700; color: var(--accent); }
+  header p { color: var(--text-dim); margin-top: 0.5rem; font-size: 0.9rem; }
+
+  .meta {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    padding: 1rem 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .meta span strong { color: var(--text); }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+  }
+  section h2 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  section h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-top: 1.25rem;
+    margin-bottom: 0.75rem;
+  }
+  section h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent4);
+    margin-top: 1rem;
+    margin-bottom: 0.25rem;
+  }
+
+  p { margin-bottom: 0.75rem; }
+  ul, ol { margin: 0.5rem 0 0.75rem 1.5rem; }
+  li { margin-bottom: 0.3rem; }
+
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85em;
+    background: var(--surface2);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    color: var(--accent4);
+  }
+  pre {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin: 0.75rem 0;
+  }
+  pre code { background: none; padding: 0; color: var(--text); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    font-size: 0.8rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.6rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--surface2); font-weight: 600; color: var(--accent); white-space: nowrap; }
+  td { background: var(--surface); }
+
+  .note {
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    border-left: 3px solid var(--accent);
+    background: rgba(136, 192, 208, 0.08);
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+  }
+  .note.ok { border-left-color: var(--accent2); background: rgba(163, 190, 140, 0.08); }
+
+  .diagram {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    padding: 1rem 0.5rem;
+    white-space: pre;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+  }
+
+  .gate-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+  }
+  .gate-item {
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid var(--accent);
+    font-size: 0.85rem;
+  }
+  .gate-item strong { color: var(--accent); display: block; margin-bottom: 0.25rem; }
+
+  .section-label {
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+  .label-producer { background: #2a4a6a; color: #88c0d0; }
+  .label-consumer { background: #3a5a30; color: #a3be8c; }
+
+  footer {
+    text-align: center;
+    padding: 2rem 0;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+  }
+
+  .tag {
+    display: inline-block;
+    padding: 0 0.4rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .tag-llm { background: #4a2850; color: #b48ead; }
+  .tag-redis { background: #4a3020; color: #ebcb8b; }
+  .tag-voice { background: #2d4a3e; color: #a3be8c; }
+
+  .mermaid-wrapper {
+    background: #1a1d27;
+    border-radius: 8px;
+    padding: 0.5rem;
+    margin: 0.75rem 0;
+    overflow-x: auto;
+  }
+  .mermaid-wrapper svg { max-width: 100%; height: auto; }
+
+  @media (max-width: 640px) {
+    body { padding: 1rem; }
+    .gate-list { grid-template-columns: 1fr; }
+    table { font-size: 0.75rem; }
+  }
+</style>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  themeVariables: {
+    background: '#1a1d27',
+    primaryColor: '#2a4a6a',
+    primaryBorderColor: '#4a7fa8',
+    primaryTextColor: '#e5e9f0',
+    lineColor: '#88c0d0',
+    secondaryColor: '#242837',
+    tertiaryColor: '#2d3348',
+    actorBorder: '#4a7fa8',
+    actorTextColor: '#88c0d0',
+    noteBkgColor: '#2a3f5c',
+    noteTextColor: '#d8eef0',
+    signalColor: '#88c0d0',
+    signalTextColor: '#b8d8f0',
+    labelColor: '#8a8fa8',
+    loopTextColor: '#b48ead',
+    sequenceNumberColor: '#ebcb8b'
+  },
+  sequence: {
+    showSequenceNumbers: false,
+    actorFontSize: 11,
+    noteFontSize: 10,
+    messageFontSize: 10,
+    mirrorActors: false,
+    bottomMarginAdj: 10,
+    rightAngles: true,
+    actorFontWeight: 600
+  }
+});
+</script>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>초정밀 기능 실행 흐름도 (Detailed Function Flow)</h1>
+  <p>UI 진입점 → LLM API 호출 → Redis 비동기 큐잉 → 워커 오케스트레이션 → 서브에이전트 MCP 도구 실행</p>
+</header>
+
+<div class="meta">
+  <span>상태: <strong>Ultra-Detailed / Finalized</strong></span>
+  <span>최종 수정: <strong>2026-05-04</strong></span>
+  <span>패턴: <strong>Pattern 3 (Voice Integrated)</strong></span>
+</div>
+
+<!-- ================================================================ -->
+<section>
+<h2>1. 전체 아키텍처 시퀀스</h2>
+
+<div class="mermaid-wrapper">
+<div class="mermaid">
+sequenceDiagram
+  participant UI as A2UI (Browser)
+  participant API as SV: api/supervisor
+  participant CAS as SV: coordinator
+  participant PLN as SV: llm_planning
+  participant QUE as SV: task_queue
+  participant WRK as SV: worker
+  participant GRF as SV: langgraph
+  participant INV as SV: invocation
+  participant SUB as SUB: a2a_handler
+  participant MCP as SUB: mcp
+
+  rect rgb(30, 40, 55)
+    Note over UI,MCP: Stage 1: Request &amp; Idempotency
+    UI->>API: POST /tasks (JSON-RPC)
+    API->>CAS: check_and_reserve_request(request_id)
+    Note right of CAS: Redis SET NX (1h expiry)
+    CAS-->>API: (is_new, task_id)
+  end
+
+  rect rgb(40, 45, 55)
+    Note over UI,MCP: Stage 2: Heavy-duty Planning
+    API->>PLN: plan(user_input)
+    PLN->>PLN: _get_routing_decision() → LLM Call
+    PLN->>PLN: _evaluate_hitl_policy() → LLM Call
+    Note right of PLN: Calculate Frozen Plan Hash
+  end
+
+  rect rgb(30, 45, 50)
+    Note over UI,MCP: Stage 3: Persistence &amp; Queueing
+    PLN->>CAS: transition_to_waiting_review()
+    Note right of CAS: Redis HSET (version: 0)
+    PLN->>QUE: enqueue_task()
+    Note right of QUE: Redis LPUSH
+    API-->>UI: 202 Accepted (Task ID)
+  end
+
+  rect rgb(40, 40, 50)
+    Note over UI,MCP: Stage 4: Consumer Dequeue &amp; Graph
+    WRK->>QUE: dequeue_task() (BRPOPLPUSH)
+    WRK->>GRF: graph.ainvoke(initial_state)
+  end
+
+  rect rgb(45, 35, 55)
+    Note over UI,MCP: Stage 5: Cross-Agent Invocation
+    GRF->>INV: invoke(agent_key, method)
+    INV->>INV: _check_circuit_breaker()
+    INV->>SUB: POST /a2a (JSON-RPC)
+  end
+
+  rect rgb(35, 45, 40)
+    Note over UI,MCP: Stage 6: Sub-Agent Execution
+    SUB->>SUB: _select_tools() → LLM Call
+    SUB->>MCP: call(method, params)
+    Note right of MCP: MCP Session Handshake
+    MCP-->>SUB: Tool Raw Result
+    SUB-->>INV: HTTP 200 OK (Final Answer)
+  end
+
+  rect rgb(40, 45, 50)
+    Note over UI,MCP: Stage 7: Response &amp; Stream
+    INV->>GRF: _merge_node() (Update Swarm Facts)
+    GRF->>API: _compose_and_publish_results()
+    API->>UI: Redis XADD → SSE Stream
+  end
+</div></div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>2. 마스터 상세 기능 명세</h2>
+
+<h3>Part 1: Supervisor Agent — Producer (API &amp; Planning)</h3>
+
+<table>
+  <thead>
+    <tr><th>단계</th><th>함수</th><th>상세 로직</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>S1-1</td><td><code>api/supervisor.py :: handle_supervisor_request</code></td><td>POST 요청 수신, JsonRpcRequest 바인딩 및 기본 스키마 검증</td><td>진입점</td></tr>
+    <tr><td>S1-2</td><td><code>supervisor_a2a_request_validator.py :: validate_request</code></td><td>session_id, message 필수 필드 존재 여부 및 request_id 형식 검증</td><td>유효성검사</td></tr>
+    <tr><td>S1-3</td><td><code>supervisor_agent_service.py :: execute_task</code></td><td>태스크 라이프사이클 관리 시작. coordinator 통해 중복 요청 확인</td><td>오케스트레이션</td></tr>
+    <tr><td>S1-4</td><td><code>execution_consistency_coordinator.py :: check_and_reserve_request</code></td><td><span class="tag tag-redis">Redis CAS</span> <code>set(lock_key, tid, nx=True, ex=3600)</code> — 동일 request_id 유일 실행 보장</td><td>멱등성락</td></tr>
+    <tr><td>S1-5</td><td><code>hitl_gate_service.py :: evaluate_and_open_review</code></td><td>입력 메시지 보안 검사 및 플래닝 프로세스 트리거</td><td>보안게이트</td></tr>
+    <tr><td>S1-6</td><td><code>prompt_injection_guard.py :: sanitize</code></td><td>정규표현식으로 &lt;script&gt;, eval(), SQL Injection 및 시스템 프롬프트 탈취 시도 필터링</td><td>인젝션방지</td></tr>
+    <tr><td>S1-7</td><td><code>llm_planning_service.py :: plan</code></td><td>사용 가능한 서브에이전트 목록 로드, 실행 계획 수립 시작</td><td>플래닝시작</td></tr>
+    <tr><td>S1-8</td><td><code>llm_planning_service.py :: load_agent_cards</code></td><td><code>supervisor.yml</code> 등록 에이전트의 <code>/.well-known/agent-card.json</code> HTTP GET 실시간 수집</td><td>에이전트탐색</td></tr>
+    <tr><td>S1-9</td><td><code>llm_planning_service.py :: _get_routing_decision</code></td><td><span class="tag tag-llm">LLM 호출</span> <code>planning-system</code> 프롬프트로 사용자 의도에 맞는 에이전트 호출 순서 DAG 생성</td><td>실행계획수립</td></tr>
+    <tr><td>S1-10</td><td><code>llm_planning_service.py :: _evaluate_hitl_policy</code></td><td><span class="tag tag-llm">LLM 호출</span> 생성된 계획 위험도(결제, 삭제 등) 평가 — 인간 승인 필요 여부 결정</td><td>정책평가</td></tr>
+    <tr><td>S1-11</td><td><code>llm_planning_service.py :: _safe_parse_json</code></td><td>LLM Markdown 응답에서 JSON 블록 추출, FrozenExecutionPlan 객체 파싱</td><td>데이터추출</td></tr>
+    <tr><td>S1-12</td><td><code>canonical_json.py :: calculate_request_hash</code></td><td>원본 입력 파라미터 Canonical JSON 정렬 후 SHA-256 해시 생성 (무결성 검증)</td><td>입력해싱</td></tr>
+    <tr><td>S1-13</td><td><code>canonical_json.py :: calculate_frozen_plan_hash</code></td><td>routing_queue + constraints 결합 → 계획 무결성 해시 생성</td><td>플랜해싱</td></tr>
+    <tr><td>S1-14</td><td><code>execution_consistency_coordinator.py :: transition_to_waiting_review</code></td><td><span class="tag tag-redis">Redis HSET</span> 태스크 상태 WAITING_REVIEW, version 0 초기화 저장</td><td>상태영속화</td></tr>
+    <tr><td>S1-15</td><td><code>execution_consistency_coordinator.py :: persist_snapshot</code></td><td>승인 시점 재검증용 request_hash, plan_hash 포함 스냅샷 저장</td><td>스냅샷저장</td></tr>
+    <tr><td>S1-16</td><td><code>task_queue_service.py :: enqueue_task</code></td><td>승인 불필요 시 <code>Redis.lpush</code> → 백그라운드 워커 큐(<code>supervisor:task_queue</code>) 전송</td><td>큐잉</td></tr>
+    <tr><td>S1-17</td><td><code>openai_realtime_adapter.py :: _update_session</code></td><td><span class="tag tag-voice">Voice</span> <code>prompts.yml</code>의 <code>stt-system</code> 지침 로드 → OpenAI Realtime 세션 설정</td><td>음성인식지침</td></tr>
+    <tr><td>S1-18</td><td><code>supervisor_agent_service.py :: _build_accepted_response</code></td><td>태스크 접수 완료 응답 생성. 승인 필요 시 <code>reason: HITL_REQUIRED</code> 포함</td><td>최종응답</td></tr>
+  </tbody>
+</table>
+
+<h3>Part 2: Supervisor Agent — Consumer (Worker &amp; Execution)</h3>
+
+<table>
+  <thead>
+    <tr><th>단계</th><th>함수</th><th>상세 로직</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>S2-1</td><td><code>worker.py :: run_forever</code></td><td>다중 워커 프로세스 기동, <code>_worker_loop</code> 비동기 태스크 실행</td><td>워커기동</td></tr>
+    <tr><td>S2-2</td><td><code>task_queue_service.py :: dequeue_task</code></td><td><span class="tag tag-redis">Reliable Queue</span> <code>brpoplpush</code> 작업 획득. socket_timeout 20s</td><td>작업획득</td></tr>
+    <tr><td>S2-3</td><td><code>worker_execution_service.py :: _process_task</code></td><td>작업 유형 분류 및 실행 환경(Graph State) 초기화</td><td>실행준비</td></tr>
+    <tr><td>S2-4</td><td><code>worker_execution_service.py :: _process_task</code></td><td><strong>Direct Answer Check</strong> — 단순 질의 시 그래프 없이 즉시 LLM 답변 생성</td><td>최적화경로</td></tr>
+    <tr><td>S2-5</td><td><code>execution_consistency_coordinator.py :: start_approved_resume</code></td><td><span class="tag tag-redis">CAS 전이</span> WAITING_REVIEW → RUNNING 원자적 변경. 실패 시 즉시 중단</td><td>상태점검</td></tr>
+    <tr><td>S2-6</td><td><code>supervisor_graph_execution_service.py :: execute_plan</code></td><td>LangGraph 복합 추론 및 다중 에이전트 오케스트레이션 엔진 가동</td><td>그래프엔진</td></tr>
+    <tr><td>S2-7</td><td><code>execution_consistency_coordinator.py :: load_swarm_state</code></td><td>세션 이전 대화 맥락 + 공유 메모리(SwarmState) Redis 로드</td><td>지식로딩</td></tr>
+    <tr><td>S2-8</td><td><code>langgraph_factory.py :: _select_node</code></td><td><code>current_step_index</code> 확인 → 다음 호출할 서브에이전트 노드 결정</td><td>노드제어</td></tr>
+    <tr><td>S2-9</td><td><code>langgraph_factory.py :: _invoke_node</code></td><td>결정된 서브에이전트 노드 진입 → invocation_service 기동</td><td>노드실행</td></tr>
+    <tr><td>S2-10</td><td><code>default_a2a_invocation.py :: invoke</code></td><td>서브에이전트 외부 통신 및 장애 복구 로직 수행</td><td>대외호출</td></tr>
+    <tr><td>S2-11</td><td><code>default_a2a_invocation.py :: _check_circuit_breaker</code></td><td>대상 에이전트 최근 실패율 확인 → 임계값 초과 시 Fail-Fast 차단</td><td>회로차단</td></tr>
+    <tr><td>S2-12</td><td><code>default_a2a_invocation.py :: invoke</code></td><td><strong>Exponential Backoff</strong> — 통신 실패 시 initial-backoff-ms부터 점진적 증가 재시도</td><td>재시도</td></tr>
+    <tr><td>S2-13</td><td><code>default_a2a_invocation.py :: invoke</code></td><td><strong>202 Accepted Handling</strong> — 서브에이전트 비동기 접수 시 "접수됨" 매핑</td><td>비동기대응</td></tr>
+    <tr><td>S2-14</td><td><code>default_a2a_invocation.py :: _update_circuit_breaker</code></td><td>호출 성공/실패 기록 → 회로 상태(Closed/Open) 갱신</td><td>상태피드백</td></tr>
+    <tr><td>S2-15</td><td><code>langgraph_factory.py :: _handoff_evaluate_node</code></td><td>서브에이전트 응답 분석 → 추가 Handoff 요청 검사</td><td>동적라우팅</td></tr>
+    <tr><td>S2-16</td><td><code>handoff_policy.py :: evaluate</code></td><td>Handoff 요청 시 최대 Hop 수 제한 및 대상 에이전트 허용 정책 검증</td><td>정책검증</td></tr>
+    <tr><td>S2-17</td><td><code>langgraph_factory.py :: _merge_node</code></td><td>서브에이전트 실행 결과 + 새로운 지식 → SwarmState 병합 업데이트</td><td>지식병합</td></tr>
+    <tr><td>S2-18</td><td><code>llm_compose_service.py :: stream_compose</code></td><td>모든 에이전트 실행 완료 후 최종 답변 생성. A2UI Early Check 포함</td><td>결과합성</td></tr>
+    <tr><td>S2-19</td><td><code>supervisor_progress_publisher.py :: publish_chunk</code></td><td>답변 생성 토큰 → <code>event: chunk</code> Redis Stream 즉시 발행</td><td>실시간출력</td></tr>
+    <tr><td>S2-20</td><td><code>supervisor_progress_publisher.py :: publish_reasoning</code></td><td>LLM 사고 과정(thought 태그) 추출 → <code>event: reasoning</code> 별도 발행</td><td>투명성확보</td></tr>
+    <tr><td>S2-21</td><td><code>supervisor_progress_publisher.py :: publish_a2ui</code></td><td>서브에이전트 결과에 UI 메타데이터 → <code>event: a2ui</code> 발행, 즉시 렌더링</td><td>UI최적화</td></tr>
+    <tr><td>S2-22</td><td><code>execution_consistency_coordinator.py :: complete_execution</code></td><td><span class="tag tag-redis">CAS 전이</span> 상태 COMPLETED 변경, 최종 결과 JSON 영구 저장</td><td>작업종료</td></tr>
+  </tbody>
+</table>
+
+<h3>Part 3: Sub-Agent — Execution Deep-Dive</h3>
+
+<h4>Phase 1: Task Publishing (Producer — API Layer)</h4>
+
+<table>
+  <thead>
+    <tr><th>단계</th><th>함수</th><th>상세 로직</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A1-1</td><td><code>main.py :: a2a_router</code></td><td>Supervisor POST 요청 수신. JsonRpcRequest 모델 바인딩</td><td>진입점</td></tr>
+    <tr><td>A1-2</td><td><code>authorization_service.py :: assert_authorized</code></td><td>allowed_scopes vs 요청 scope 비교. 권한 없으면 SecurityException</td><td>보안</td></tr>
+    <tr><td>A1-3</td><td><code>a2a_handler.py :: handle_a2a_request</code></td><td>method_mapping 통해 <code>message/send</code> → <code>SendMessage</code> 정규화 및 본문 추출</td><td>규격화</td></tr>
+    <tr><td>A1-4</td><td><code>task_queue.py :: enqueue</code></td><td>실행 컨텍스트(session_id, task_id, message) Redis Queue 인큐</td><td>비동기전환</td></tr>
+    <tr><td>A1-5</td><td><code>a2a_handler.py :: handle_a2a_request</code></td><td>HTTP 202 Accepted + task_id 즉시 반환 → 커넥션 해제</td><td>호출종료</td></tr>
+  </tbody>
+</table>
+
+<h4>Phase 2: Task Consuming (Consumer — Background Worker)</h4>
+
+<table>
+  <thead>
+    <tr><th>단계</th><th>함수</th><th>상세 로직</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A2-1</td><td><code>worker.py :: run_forever</code></td><td>Redis BRPOP 또는 XREAD로 큐 태스크 지속적 폴링</td><td>워커루프</td></tr>
+    <tr><td>A2-2</td><td><code>worker.py :: _process_task</code></td><td>큐 메시지에서 trace_id 복원, AgentExecutor 호출 준비</td><td>태스크인출</td></tr>
+    <tr><td>A2-3</td><td><code>executor.py :: execute</code></td><td>task_id, session_id 기반 LangGraph 워크플로우 기동</td><td>실행시작</td></tr>
+    <tr><td>A2-4</td><td><code>redis_adapter.py :: update_status</code></td><td><span class="tag tag-redis">Redis</span> 태스크 상태 RUNNING 업데이트</td><td>상태영속화</td></tr>
+    <tr><td>A2-5</td><td><code>agent_progress_publisher.py :: publish</code></td><td><span class="tag tag-redis">Redis Stream</span> PROGRESS 이벤트 발행 (UI 실시간 갱신)</td><td>모니터링</td></tr>
+    <tr><td>A2-6</td><td><code>langgraph_factory.py :: _load_context</code></td><td>사용자 메시지 → Message 객체 변환, 대화 History 첫 삽입</td><td>컨텍스트</td></tr>
+    <tr><td>A2-7</td><td><code>langgraph_factory.py :: _select_tools</code></td><td><code>McpToolRegistry.get_tool_schemas()</code> → 사용 가능 도구 목록 획득</td><td>도구탐색</td></tr>
+    <tr><td>A2-8</td><td><code>llm_adapters.py :: LlmPlanner.plan</code></td><td><span class="tag tag-llm">LLM 호출</span> 도구 목록 + 메시지 → 실행할 Tool + 파라미터 결정</td><td>의사결정</td></tr>
+    <tr><td>A2-9</td><td><code>llm_adapters.py :: LlmPlanner.plan</code></td><td>LLM 응답 → JSON 블록 추출 → ToolPlan 객체 리스트 역직렬화</td><td>데이터변환</td></tr>
+    <tr><td>A2-10</td><td><code>langgraph_factory.py :: _execute_tools</code></td><td>plans 리스트 루프 → 순차적 실행 시작</td><td>루프제어</td></tr>
+    <tr><td>A2-11</td><td><code>mcp_infrastructure.py :: get_session</code></td><td>도구 이름에 해당하는 MCP 서버 McpTransport 인스턴스 획득</td><td>세션관리</td></tr>
+    <tr><td>A2-12</td><td><code>mcp_infrastructure.py :: call("initialize")</code></td><td>MCP 서버 Handshake — 프로토콜 버전 + 클라이언트 정보 교환</td><td>MCP 규격</td></tr>
+    <tr><td>A2-13</td><td><code>mcp_infrastructure.py :: call(tool_name)</code></td><td>도구 파라미터 JSON-RPC 전송 → 비즈니스 로직 실행</td><td>도구실행</td></tr>
+    <tr><td>A2-14</td><td><code>mcp_infrastructure.py :: _parse_sse_response</code></td><td>서버 data: 스트림 또는 JSON 응답 → 결과 페이로드 추출</td><td>응답파싱</td></tr>
+    <tr><td>A2-15</td><td><code>agent_progress_publisher.py :: publish</code></td><td><span class="tag tag-redis">Redis Stream</span> TOOL_RESULT 발행</td><td>진행전파</td></tr>
+    <tr><td>A2-16</td><td><code>langgraph_factory.py :: _finalize_context</code></td><td>실행 결과 → Message(role=tool) History 추가, 문맥 완성</td><td>결과통합</td></tr>
+    <tr><td>A2-17</td><td><code>llm_adapters.py :: LlmComposer.stream_compose</code></td><td><code>compose-prompt-template</code>에 도구 실행 결과 + History 주입</td><td>답변준비</td></tr>
+    <tr><td>A2-18</td><td><code>llm_adapters.py :: LlmComposer.stream_compose</code></td><td><span class="tag tag-llm">LLM Stream 호출</span> 최종 답변 생성</td><td>결과합성</td></tr>
+    <tr><td>A2-19</td><td><code>agent_progress_publisher.py :: publish</code></td><td><span class="tag tag-redis">Redis Stream</span> 텍스트 청크(CHUNK) 실시간 발행</td><td>스트리밍</td></tr>
+    <tr><td>A2-20</td><td><code>redis_adapter.py :: complete_task</code></td><td><span class="tag tag-redis">Redis</span> 최종 결과 + 상태 COMPLETED 영구 저장</td><td>최종영속화</td></tr>
+  </tbody>
+</table>
+
+<h3>Part 4: Voice Integrated Orchestration (Pattern 3)</h3>
+
+<table>
+  <thead>
+    <tr><th>단계</th><th>함수</th><th>상세 로직</th><th>비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>V1-1</td><td><code>api/supervisor.py :: websocket_voice_stream</code></td><td>브라우저 오디오 스트림 수신. session_id 쿼리 파라미터 바인딩</td><td>음성진입점</td></tr>
+    <tr><td>V1-2</td><td><code>openai_realtime_adapter.py :: send_audio</code></td><td>PCM16 바이너리 → Base64 → OpenAI Realtime API 전송</td><td>오디오전달</td></tr>
+    <tr><td>V1-3</td><td><code>openai_realtime_adapter.py :: listen</code></td><td>OpenAI 실시간 전사 데이터(text.delta) 수신 → UI Echo 전송</td><td>실시간피드백</td></tr>
+    <tr><td>V1-4</td><td><code>api/supervisor.py :: send_loop</code></td><td>Final Transcript 수신 → OpenAI 최종 전사 완료 이벤트 감지</td><td>인식완료</td></tr>
+    <tr><td>V1-5</td><td><code>supervisor_agent_service.py :: execute_task</code></td><td><strong>Server-Side Trigger</strong> — 인식 텍스트로 즉시 에이전트 태스크 실행</td><td>통합오케스트레이션</td></tr>
+    <tr><td>V1-6</td><td><code>api/supervisor.py :: send_loop</code></td><td>생성된 task_id, status, review_reason WebSocket으로 브라우저 전송</td><td>핸드셰이크</td></tr>
+    <tr><td>V1-7</td><td><code>app.js :: onVoiceTaskStarted</code></td><td><strong>HITL Check</strong> — WAITING_REVIEW면 리뷰 패널 표시, 아니면 SSE 구독</td><td>조건부UI전환</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>3. 핵심 로직 게이트 및 제어점 (Logic Gates)</h2>
+
+<div class="gate-list">
+  <div class="gate-item">
+    <strong>Idempotency Gate</strong>
+    <code>coordinator.py</code> — request_id 중복 시 기존 task_id 반환, 중복 실행 방지
+  </div>
+  <div class="gate-item">
+    <strong>HITL Policy Gate</strong>
+    <code>llm_planning_service.py</code> — LLM이 <code>reviewRequired: true</code> 반환 시 작업 중단, 사용자 Decision(APPROVE/CANCEL) 대기
+  </div>
+  <div class="gate-item">
+    <strong>Circuit Breaker Gate</strong>
+    <code>default_a2a_invocation.py</code> — 에이전트 호출 실패가 failure-threshold 초과 시 open-duration-ms 동안 호출 차단
+  </div>
+  <div class="gate-item">
+    <strong>A2UI Rendering Gate</strong>
+    <code>llm_compose_service.py</code> — 서브에이전트 응답에 a2ui 필드 감지 시 긴 텍스트 대신 즉시 UI 렌더링
+  </div>
+  <div class="gate-item" style="grid-column: 1 / -1;">
+    <strong>Voice-to-Task Gate</strong>
+    <code>supervisor.py</code> — WebSocket 핸들러에서 최종 전사 완료 즉시 브라우저 거치지 않고 서버 내부 태스크 실행 → 지연 최소화
+  </div>
+</div>
+</section>
+
+<footer>
+  Detailed Function Flow — Smart Supervisor Sub-Agent — Pattern 3 Applied
+</footer>
+
+</div>
+</body>
+</html>
