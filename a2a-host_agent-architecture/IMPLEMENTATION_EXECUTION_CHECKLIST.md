@@ -1,9 +1,9 @@
 # Supervisor Implementation Execution Checklist
 
 > [!IMPORTANT]
-> **구현 폴더**: `/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/src/supervisor-agent`
+> **구현 폴더**: `../src/supervisor-agent`
 > **코드 분리 원칙**: 추후 별도 서버에서 구동할 예정이므로, **sub-agent와 코드를 공유하거나 참고해서는 절대 안 됩니다.** 소스가 엮이지 않도록 독립적으로 구현해야 합니다.
-> **엔터프라이즈 환경 구성**: `/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/platform-runtime-enterprise-spec` 폴더의 문서들을 구현에 완벽히 반영하였습니다.
+> **엔터프라이즈 환경 구성**: `../platform-runtime-enterprise-spec` 폴더의 문서들을 구현에 완벽히 반영하였습니다.
 
 Updated: 2026-04-27
 Status: **ALL IMPLEMENTED**

@@ -16,6 +16,7 @@
     --accent2: #a3be8c;
     --accent3: #bf616a;
     --accent4: #ebcb8b;
+    --purple: #b48ead;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -25,59 +26,41 @@
     line-height: 1.7;
     padding: 2rem;
   }
-  .container { max-width: 960px; margin: 0 auto; }
+  .container { max-width: 1000px; margin: 0 auto; }
 
   header {
     padding: 2rem 0;
     border-bottom: 1px solid var(--border);
     margin-bottom: 2.5rem;
   }
-  header h1 {
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: var(--accent);
-  }
-  header p {
-    color: var(--text-dim);
-    margin-top: 0.5rem;
-    font-size: 0.9rem;
-  }
+  header h1 { font-size: 1.6rem; font-weight: 700; color: var(--accent); }
+  header p { color: var(--text-dim); margin-top: 0.5rem; font-size: 0.9rem; }
 
   .meta {
-    display: flex;
-    gap: 1.5rem;
-    flex-wrap: wrap;
-    padding: 1rem 1.25rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 2rem;
-    font-size: 0.85rem;
-    color: var(--text-dim);
+    display: flex; gap: 1.5rem; flex-wrap: wrap;
+    padding: 1rem 1.25rem; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 2rem; font-size: 0.85rem; color: var(--text-dim);
   }
   .meta span strong { color: var(--text); }
 
   section {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1.5rem 1.75rem;
-    margin-bottom: 1.5rem;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.5rem 1.75rem; margin-bottom: 1.5rem;
   }
   section h2 {
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: var(--accent);
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
+    font-size: 1.2rem; font-weight: 600; color: var(--accent);
+    margin-bottom: 1rem; padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--border);
   }
   section h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--accent2);
-    margin-top: 1.25rem;
-    margin-bottom: 0.5rem;
+    font-size: 1rem; font-weight: 600; color: var(--accent2);
+    margin-top: 1.25rem; margin-bottom: 0.5rem;
+  }
+  section h4 {
+    font-size: 0.9rem; font-weight: 600; color: var(--accent4);
+    margin-top: 1rem; margin-bottom: 0.25rem;
   }
 
   p { margin-bottom: 0.75rem; }
@@ -86,73 +69,75 @@
 
   code {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.85em;
-    background: var(--surface2);
-    padding: 0.15em 0.4em;
-    border-radius: 4px;
-    color: var(--accent4);
+    font-size: 0.85em; background: var(--surface2);
+    padding: 0.15em 0.4em; border-radius: 4px; color: var(--accent4);
   }
   pre {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 1rem;
-    overflow-x: auto;
-    font-size: 0.82rem;
-    line-height: 1.5;
-    margin: 0.75rem 0;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 1rem; overflow-x: auto;
+    font-size: 0.82rem; line-height: 1.5; margin: 0.75rem 0;
   }
   pre code { background: none; padding: 0; color: var(--text); }
 
   table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0.75rem 0;
-    font-size: 0.85rem;
+    width: 100%; border-collapse: collapse;
+    margin: 0.75rem 0; font-size: 0.83rem;
   }
   th, td {
     border: 1px solid var(--border);
-    padding: 0.5rem 0.75rem;
-    text-align: left;
+    padding: 0.5rem 0.75rem; text-align: left; vertical-align: top;
   }
-  th { background: var(--surface2); font-weight: 600; color: var(--accent); }
+  th { background: var(--surface2); font-weight: 600; color: var(--accent); white-space: nowrap; }
   td { background: var(--surface); }
 
-  .note {
-    padding: 0.75rem 1rem;
-    border-radius: 6px;
-    border-left: 3px solid var(--accent);
-    background: rgba(136, 192, 208, 0.08);
-    margin: 0.75rem 0;
-    font-size: 0.9rem;
-  }
-
   .feature-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 1rem;
-    margin: 0.75rem 0;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin: 0.75rem 0;
   }
   .feature-card {
-    background: var(--surface2);
-    border-radius: 6px;
-    padding: 1rem;
+    background: var(--surface2); border-radius: 6px; padding: 1rem;
   }
   .feature-card h4 { color: var(--accent); margin-bottom: 0.5rem; font-size: 0.95rem; }
   .feature-card p { font-size: 0.83rem; color: var(--text-dim); margin: 0; }
 
+  .note {
+    padding: 0.75rem 1rem; border-radius: 6px;
+    border-left: 3px solid var(--accent);
+    background: rgba(136, 192, 208, 0.08);
+    margin: 0.75rem 0; font-size: 0.9rem;
+  }
+  .note.ok { border-left-color: var(--accent2); background: rgba(163, 190, 140, 0.08); }
+  .note.warn { border-left-color: var(--accent3); background: rgba(191, 97, 106, 0.08); }
+
+  .doc-links {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 0.75rem 0;
+  }
+  .doc-link {
+    background: var(--surface2); border-radius: 6px; padding: 0.75rem 1rem;
+    border-left: 3px solid var(--accent);
+  }
+  .doc-link a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+  .doc-link a:hover { text-decoration: underline; }
+  .doc-link p { font-size: 0.8rem; color: var(--text-dim); margin: 0.25rem 0 0; }
+
+  .tag {
+    display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px;
+    font-size: 0.7rem; font-weight: 600;
+  }
+  .tag-py { background: #2a4a3e; color: #a3be8c; }
+  .tag-fastapi { background: #2a4a5a; color: #88c0d0; }
+  .tag-redis { background: #4a3020; color: #ebcb8b; }
+  .tag-mcp { background: #3a2a50; color: #b48ead; }
+  .tag-llm { background: #4a2850; color: #b48ead; }
+  .tag-ws { background: #2a3f4a; color: #88c0d0; }
+
   footer {
-    text-align: center;
-    padding: 2rem 0;
-    color: var(--text-dim);
-    font-size: 0.8rem;
-    border-top: 1px solid var(--border);
-    margin-top: 2rem;
+    text-align: center; padding: 2rem 0; color: var(--text-dim);
+    font-size: 0.8rem; border-top: 1px solid var(--border); margin-top: 2rem;
   }
 
   @media (max-width: 640px) {
     body { padding: 1rem; }
-    .feature-grid { grid-template-columns: 1fr; }
+    .feature-grid, .doc-links { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -166,46 +151,209 @@
 
 <div class="meta">
   <span>버전: <strong>v2.5</strong></span>
-  <span>최종 업데이트: <strong>2026-05-04</strong></span>
-  <span>Python: <strong>3.11</strong></span>
-  <span>Queue: <strong>Redis Reliable</strong></span>
+  <span>최종 업데이트: <strong>2026-05-19</strong></span>
+  <span>런타임: <strong>Python 3.11 / FastAPI</strong></span>
+  <span>Queue: <strong>Redis Reliable (BRPOPLPUSH)</strong></span>
+  <span>오케스트레이션: <strong>LangGraph</strong></span>
 </div>
 
 <!-- ================================================================ -->
 <section>
-<h2>주요 특징 (Key Features)</h2>
+<h2>시스템 개요 (System Overview)</h2>
 
-<div class="feature-grid">
-  <div class="feature-card">
-    <h4>통합 음성 오케스트레이션</h4>
-    <p>Server-Side Trigger: 음성 인식 완료 시 브라우저 거치지 않고 서버에서 즉시 에이전트 작업 실행. OpenAI Realtime API 기반 실시간 STT 스트리밍.</p>
-  </div>
-  <div class="feature-card">
-    <h4>엔터프라이즈급 신뢰성</h4>
-    <p>Redis BRPOPLPUSH 패턴으로 At-Least-Once 작업 전달 보장. CAS(Compare-And-Set)로 분산 환경 상태 정합성 유지. 소켓 타임아웃 20s 최적화.</p>
-  </div>
-  <div class="feature-card">
-    <h4>지능형 계획 및 관리</h4>
-    <p>prompts.yml 중앙 프롬프트 관리. HITL(Human-In-The-Loop) 정책 게이트. Circuit Breaker로 장애 에이전트 자동 차단.</p>
-  </div>
+<p>본 프로젝트는 <strong>Supervisor Agent</strong>와 <strong>Sub-Agent</strong>로 구성된 A2A(Agent-to-Agent) 기반 멀티 에이전트 시스템이다. Supervisor는 사용자 요청을 분석하고 적합한 Sub-Agent에 작업을 라우팅하며, Sub-Agent는 MCP(Model Context Protocol) 도구를 통해 실제 비즈니스 로직을 수행한다.</p>
+
+<p>음성 입력(STT)과 텍스트 채팅을 모두 지원하며, 두 입력 모두 동일한 <code>execute_task()</code> 실행 파이프라인을 통해 처리된다. 음성은 OpenAI Realtime API 또는 Google Gemini Live API를 통해 실시간 전사(transcription)된 후 Supervisor 코어 로직으로 전달된다.</p>
+
+<div class="note">
+  <strong>핵심 설계 원칙:</strong> 음성은 순수한 입력 수단. STT로 텍스트 변환 후 채팅과 동일한 <code>execute_task()</code> 로직. 별도 분기/플래그 없음.
 </div>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>Supervisor Agent (마스터 오케스트레이터)</h2>
+
+<p>Supervisor는 시스템의 중앙 제어 장치다. 모든 사용자 요청은 Supervisor를 통해 들어오며, 요청 분석 → 실행 계획 수립 → HITL 평가 → Sub-Agent 호출 → 결과 합성의 전 과정을 주관한다.</p>
+
+<h3>API 엔드포인트</h3>
+<table>
+  <thead>
+    <tr><th>엔드포인트</th><th>프로토콜</th><th>용도</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>POST /a2a/supervisor</code></td><td><span class="tag tag-fastapi">HTTP JSON-RPC</span></td><td>텍스트 채팅. <code>message/send</code> 메서드로 요청 접수</td></tr>
+    <tr><td><code>POST /a2a/supervisor/stream</code></td><td><span class="tag tag-fastapi">HTTP SSE</span></td><td>태스크 실행 이벤트 스트림 구독</td></tr>
+    <tr><td><code>WS /a2a/supervisor/voice/stream</code></td><td><span class="tag tag-ws">WebSocket</span></td><td>음성 PCM16 오디오 스트리밍 + STT + 태스크 자동 트리거</td></tr>
+  </tbody>
+</table>
+
+<h3>실행 파이프라인 (7단계)</h3>
+<table>
+  <thead>
+    <tr><th>단계</th><th>컴포넌트</th><th>설명</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1. 요청 수신</td><td><code>api/supervisor.py</code></td><td>JSON-RPC 바인딩, 기본 스키마 검증</td></tr>
+    <tr><td>2. 멱등성 보장</td><td><code>ExecutionConsistencyCoordinator</code></td><td><span class="tag tag-redis">Redis CAS</span> <code>SET NX</code>로 동일 request_id 중복 실행 방지</td></tr>
+    <tr><td>3. 계획 수립</td><td><code>LlmPlanningService</code></td><td><span class="tag tag-llm">LLM Call</span> 서브에이전트 라우팅 DAG 생성 + HITL 정책 평가</td></tr>
+    <tr><td>4. 큐잉</td><td><code>TaskQueueService</code></td><td><span class="tag tag-redis">Redis LPUSH</span> 승인 불필요 태스크를 워커 큐에 전송</td></tr>
+    <tr><td>5. 워커 실행</td><td><code>WorkerExecutionService</code></td><td><span class="tag tag-redis">BRPOPLPUSH</span>로 작업 획득 → LangGraph 그래프 실행</td></tr>
+    <tr><td>6. 크로스 에이전트 호출</td><td><code>DefaultA2aInvocation</code></td><td>Circuit Breaker + Exponential Backoff 포함 Sub-Agent HTTP 호출</td></tr>
+    <tr><td>7. 결과 합성</td><td><code>SupervisorProgressPublisher</code></td><td><span class="tag tag-redis">Redis Stream</span> chunk/reasoning/a2ui 이벤트 발행 → SSE 스트리밍</td></tr>
+  </tbody>
+</table>
+
+<h3>핵심 로직 게이트</h3>
+<table>
+  <thead>
+    <tr><th>게이트</th><th>역할</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Idempotency Gate</strong></td><td><code>request_id</code> 중복 시 기존 <code>task_id</code> 반환, 중복 실행 방지</td></tr>
+    <tr><td><strong>HITL Policy Gate</strong></td><td>LLM이 <code>reviewRequired: true</code> 반환 시 작업 중단, 사용자 APPROVE/CANCEL 대기</td></tr>
+    <tr><td><strong>Circuit Breaker Gate</strong></td><td>에이전트 호출 실패율 임계값 초과 시 일정 시간 호출 차단</td></tr>
+    <tr><td><strong>Voice-to-Task Gate</strong></td><td>STT 최종 전사 완료 즉시 서버 내부에서 태스크 실행 (브라우저 경유 없음)</td></tr>
+  </tbody>
+</table>
+
+<h3>음성 통합 (Voice Pattern 3)</h3>
+<ul>
+  <li><strong>Server-Side Trigger:</strong> 음성 인식 완료 후 브라우저를 거치지 않고 서버에서 즉시 에이전트 작업 실행</li>
+  <li><strong>STT Provider:</strong> OpenAI Realtime API (Whisper) 또는 Google Gemini Live API 선택 가능</li>
+  <li><strong>Voice Adapter:</strong> 공통 <code>VoiceAdapter</code> 인터페이스로 Provider 전환 용이 (<code>VoiceAdapterFactory</code>)</li>
+  <li><strong>WebSocket:</strong> PCM16 오디오 청크 실시간 스트리밍 + VAD(Voice Activity Detection) 기반 발화 종료 감지</li>
+  <li><strong>VAD 설정:</strong> threshold=0.4, prefix_padding_ms=600, silence_duration_ms=800</li>
+</ul>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>Sub-Agent (실행 에이전트)</h2>
+
+<p>Sub-Agent는 Supervisor로부터 요청을 받아 실제 업무를 수행하는 실행형 에이전트다. MCP(Model Context Protocol)를 통해 외부 도구와 연동하며, 내부적으로 Producer-Consumer 패턴으로 비동기 처리된다.</p>
+
+<h3>API 엔드포인트</h3>
+<table>
+  <thead>
+    <tr><th>엔드포인트</th><th>용도</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>POST /api/v1/agent/chat</code></td><td>일반 채팅 (scope: chat)</td></tr>
+    <tr><td><code>POST /api/v1/agent/sale-product/chat</code></td><td>판매 상품 도메인 채팅</td></tr>
+    <tr><td><code>POST /api/v1/agent/reservation/chat</code></td><td>예약 도메인 채팅</td></tr>
+    <tr><td><code>POST /a2a/product</code></td><td>A2A 상품 에이전트</td></tr>
+    <tr><td><code>POST /a2a/reservation</code></td><td>A2A 예약 에이전트</td></tr>
+    <tr><td><code>GET /api/v1/stream/{task_id}</code></td><td>SSE 이벤트 스트림</td></tr>
+    <tr><td><code>GET /.well-known/agent-card.json</code></td><td>A2A 에이전트 카드 (Service Discovery)</td></tr>
+  </tbody>
+</table>
+
+<h3>실행 흐름 (Phase 1 — Producer)</h3>
+<ol>
+  <li><code>a2a_handler.py</code>가 Supervisor의 <code>POST /a2a</code> 요청 수신</li>
+  <li><code>authorization_service.py</code> — scope 기반 권한 검증</li>
+  <li><code>task_queue.py</code> — 실행 컨텍스트를 <span class="tag tag-redis">Redis Queue</span>에 인큐</li>
+  <li><code>HTTP 202 Accepted</code> + <code>task_id</code> 즉시 반환 (비동기 전환)</li>
+</ol>
+
+<h3>실행 흐름 (Phase 2 — Consumer)</h3>
+<ol>
+  <li><code>worker.py</code> — Redis BRPOP/XREAD로 태스크 지속 폴링</li>
+  <li><code>LangGraphFactory</code> — 도구 선택 → <span class="tag tag-llm">LLM ToolPlan</span> 수립</li>
+  <li><code>McpInfrastructure</code> — <span class="tag tag-mcp">MCP Handshake</span> → 도구 실행</li>
+  <li><code>AgentProgressPublisher</code> — 진행 상황 <span class="tag tag-redis">Redis Stream</span> 발행</li>
+  <li><code>LlmComposer</code> — 최종 답변 생성 및 스트리밍</li>
+</ol>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>기술 스택 (Technology Stack)</h2>
+
+<table>
+  <thead>
+    <tr><th>계층</th><th>기술</th><th>용도</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>런타임</td><td><span class="tag tag-py">Python 3.11</span> + <span class="tag tag-fastapi">FastAPI</span></td><td>ASGI 비동기 서버, Uvicorn 기반</td></tr>
+    <tr><td>메시징</td><td><span class="tag tag-redis">Redis 7.x</span></td><td>태스크 큐(BRPOPLPUSH), 상태 저장(HSET/GET), 이벤트 스트림(XADD/XREAD), CAS 잠금(SET NX)</td></tr>
+    <tr><td>오케스트레이션</td><td><span class="tag tag-py">LangGraph</span></td><td>Sub-Agent 호출 DAG 실행, 동적 노드 라우팅, Handoff 정책</td></tr>
+    <tr><td>도구 연동</td><td><span class="tag tag-mcp">MCP (Model Context Protocol)</span></td><td>외부 서비스 표준화된 도구 인터페이스, Session Handshake, JSON-RPC</td></tr>
+    <tr><td>STT (음성)</td><td><span class="tag tag-llm">OpenAI Realtime API</span> / <span class="tag tag-llm">Google Gemini Live</span></td><td>실시간 PCM16 오디오 → 텍스트 전사, VAD 기반 발화 감지</td></tr>
+    <tr><td>LLM</td><td>OpenAI / Anthropic / Google (설정 가능)</td><td>라우팅 의사결정, HITL 정책 평가, 최종 답변 생성</td></tr>
+    <tr><td>스트리밍</td><td>SSE (Server-Sent Events) + Redis Stream</td><td>실시간 청크/리즈닝/A2UI 이벤트 전달</td></tr>
+    <tr><td>프론트엔드</td><td>Vanilla JS + CSS (A2UI)</td><td>채팅 UI, 음성 버튼, HITL 리뷰 패널, SSE 이벤트 렌더링</td></tr>
+  </tbody>
+</table>
 </section>
 
 <!-- ================================================================ -->
 <section>
 <h2>프로젝트 구조 (Project Structure)</h2>
 
-<table>
-  <thead>
-    <tr><th>디렉토리/파일</th><th>설명</th></tr>
-  </thead>
-  <tbody>
-    <tr><td><code>src/supervisor-agent/</code></td><td>시스템의 중앙 관제 및 오케스트레이션을 담당하는 마스터 에이전트</td></tr>
-    <tr><td><code>src/sub-agent/</code></td><td>MCP 도구와 연동하여 실질적인 업무를 수행하는 실행형 에이전트</td></tr>
-    <tr><td><code>a2a-host_agent-architecture/</code></td><td>시스템의 상세 시퀀스 및 아키텍처 문서군</td></tr>
-    <tr><td><code>DETAILED_FUNCTION_FLOW.md</code></td><td>UI부터 DB까지의 모든 함수 단위 실행 흐름도</td></tr>
-  </tbody>
-</table>
+<pre><code>smart-supervisor-sub-agent/
+├── src/
+│   ├── supervisor-agent/          # Supervisor API + Worker
+│   │   ├── app/api/               # 엔드포인트 (supervisor.py)
+│   │   ├── app/application/       # 서비스 레이어 (execute_task, HITL, queue)
+│   │   ├── app/adapters/          # LLM, Voice, Invocation 어댑터
+│   │   ├── app/domain/            # 도메인 모델, enums
+│   │   ├── app/core/              # 설정, 의존성 주입
+│   │   └── app/static/            # 프론트엔드 (A2UI)
+│   │
+│   ├── sub-agent/                 # Sub-Agent API + Worker
+│   │   ├── app/api/               # 엔드포인트 (chat, a2a, stream)
+│   │   ├── app/application/       # 실행 유스케이스, executor
+│   │   ├── app/adapters/          # MCP, LLM, Orchestration, Store
+│   │   └── app/domain/            # 도메인 모델, enums, exceptions
+│   │
+│   └── supervisor_agent/          # (신규 통합 구조)
+│
+├── a2a-host_agent-architecture/   # Supervisor 아키텍처 문서
+├── a2a-subagent-architecture/     # Sub-Agent 아키텍처 문서
+├── platform-runtime-enterprise-spec/  # 엔터프라이즈 런타임 명세
+│
+├── start_all.sh                   # 통합 실행 스크립트
+├── AGENT.md / AGENTS.md           # 에이전트 컨텍스트
+├── README.md                      # 원본 README
+│
+├── readme.html                    # 🆕 본 문서
+├── detailed_function_flow.html    # 🆕 상세 함수 흐름도
+├── stt_process.html               # 🆕 STT 처리 프로세스
+└── implementation_architecture_code_review_report.html  # 🆕 코드 리뷰 리포트</code></pre>
+</section>
+
+<!-- ================================================================ -->
+<section>
+<h2>관련 문서 (Documentation)</h2>
+
+<div class="doc-links">
+  <div class="doc-link">
+    <a href="detailed_function_flow.html">detailed_function_flow.html</a>
+    <p>Supervisor + Sub-Agent 전체 함수 단위 실행 흐름도. 7-Stage 시퀀스 다이어그램 + S1~S2, A1~A2, V1 상세 명세표 포함.</p>
+  </div>
+  <div class="doc-link">
+    <a href="stt_process.html">stt_process.html</a>
+    <p>음성(STT) 처리 프로세스 상세 문서. 엔드포인트 구조, 전체 아키텍처 흐름(SVG), 함수 체인, VAD 설정, 데이터 타입 변환 파이프라인.</p>
+  </div>
+  <div class="doc-link">
+    <a href="implementation_architecture_code_review_report.html">implementation_architecture_code_review_report.html</a>
+    <p>아키텍처 정합성 코드 리뷰 리포트. Frozen Plan Hash, Drift Policy, Circuit Breaker 등 Gap 분석 및 Action Items.</p>
+  </div>
+  <div class="doc-link">
+    <a href="AGENT.md">AGENT.md</a>
+    <p>에이전트 컨텍스트 — 전체 프로젝트 맵 및 에이전트 지침.</p>
+  </div>
+  <div class="doc-link">
+    <a href="DETAILED_FUNCTION_FLOW.md">DETAILED_FUNCTION_FLOW.md</a>
+    <p>원본 상세 기능 흐름도 (Markdown). Mermaid 시퀀스 + 함수 명세.</p>
+  </div>
+  <div class="doc-link">
+    <a href="a2a-host_agent-architecture/index.html">a2a-host_agent-architecture/</a>
+    <p>Supervisor 아키텍처 문서군 — 엔드포인트, HITL, 보안, 배포 우선순위 등 20+ 문서.</p>
+  </div>
+</div>
 </section>
 
 <!-- ================================================================ -->
@@ -213,32 +361,24 @@
 <h2>시작하기 (Quick Start)</h2>
 
 <h3>1. 가상환경 및 의존성 구축</h3>
-<p>모든 서비스는 프로젝트 루트의 통합 가상환경(<code>.venv</code>)에서 실행. Supervisor 의존성을 기준으로 환경 구축.</p>
-
-<pre><code># 가상환경 생성
-python3 -m venv .venv
-
-# 가상환경 활성화
+<pre><code>python3 -m venv .venv
 source .venv/bin/activate
-
-# 슈퍼바이저 기준 의존성 설치
 pip install -r src/supervisor-agent/requirements.txt</code></pre>
 
-<h3>2. 서비스 기동</h3>
+<h3>2. 환경 변수 설정</h3>
+<pre><code># .env 파일 생성
+OPENAI_API_KEY=sk-...
+GOOGLE_API_KEY=...
+REDIS_URL=redis://localhost:6379/0
+
+# voice provider 선택
+VOICE_PROVIDER=openai    # 또는 google</code></pre>
+
+<h3>3. 서비스 기동</h3>
 <pre><code>./start_all.sh</code></pre>
 
-<h3>3. 기능 검증</h3>
+<h3>4. 기능 검증</h3>
 <pre><code>python verify_session_id_e2e.py</code></pre>
-</section>
-
-<!-- ================================================================ -->
-<section>
-<h2>관련 문서 (Documentation)</h2>
-<ul>
-  <li><strong>아키텍처 가이드</strong>: <code>AGENT.md</code></li>
-  <li><strong>음성 인식 시퀀스</strong>: <code>a2a-host_agent-architecture/33-voice-integrated-orchestration-sequence.puml</code></li>
-  <li><strong>구현 상세 명세</strong>: <code>DETAILED_FUNCTION_FLOW.md</code></li>
-</ul>
 </section>
 
 <footer>

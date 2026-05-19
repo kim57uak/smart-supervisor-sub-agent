@@ -25,7 +25,7 @@ Updated: 2026-04-25
 
 ## MCP References
 
-- [30. MCP Server Spec & Integration Mapping](file:///Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-subagent-architecture/30-mcp-server-spec-integration-mapping.md)
+- [30. MCP Server Spec & Integration Mapping](./30-mcp-server-spec-integration-mapping.md)
 - https://modelcontextprotocol.io/
 - https://spring.io/projects/spring-ai (Spring AI MCP Implementation Reference)
 

@@ -29,10 +29,10 @@
 
 ## 📂 프로젝트 구조 (Project Structure)
 
-- [**`src/supervisor-agent/`**](file:///Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/src/supervisor-agent/README.md): 시스템의 중앙 관제 및 오케스트레이션을 담당하는 마스터 에이전트.
-- [**`src/sub-agent/`**](file:///Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/src/sub-agent/README.md): MCP 도구와 연동하여 실질적인 업무를 수행하는 실행형 에이전트.
-- [**`a2a-host_agent-architecture/`**](file:///Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/): 시스템의 상세 시퀀스 및 아키텍처 문서군.
-- [**`DETAILED_FUNCTION_FLOW.md`**](file:///Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/DETAILED_FUNCTION_FLOW.md): UI부터 DB까지의 모든 함수 단위 실행 흐름도.
+- [**`src/supervisor-agent/`**](./src/supervisor-agent/README.md): 시스템의 중앙 관제 및 오케스트레이션을 담당하는 마스터 에이전트.
+- [**`src/sub-agent/`**](./src/sub-agent/README.md): MCP 도구와 연동하여 실질적인 업무를 수행하는 실행형 에이전트.
+- [**`a2a-host_agent-architecture/`**](./a2a-host_agent-architecture/): 시스템의 상세 시퀀스 및 아키텍처 문서군.
+- [**`DETAILED_FUNCTION_FLOW.md`**](./DETAILED_FUNCTION_FLOW.md): UI부터 DB까지의 모든 함수 단위 실행 흐름도.
 
 ---
 
@@ -67,9 +67,9 @@ python verify_session_id_e2e.py
 ---
 
 ## 📚 관련 문서 (Documentation)
-- **아키텍처 가이드**: [AGENT.md](file:///Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/AGENT.md)
-- **음성 인식 시퀀스**: [33-voice-integrated-orchestration-sequence.puml](file:///Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/33-voice-integrated-orchestration-sequence.puml)
-- **구현 상세 명세**: [DETAILED_FUNCTION_FLOW.md](file:///Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/DETAILED_FUNCTION_FLOW.md)
+- **아키텍처 가이드**: [AGENT.md](./AGENT.md)
+- **음성 인식 시퀀스**: [33-voice-integrated-orchestration-sequence.puml](./a2a-host_agent-architecture/33-voice-integrated-orchestration-sequence.puml)
+- **구현 상세 명세**: [DETAILED_FUNCTION_FLOW.md](./DETAILED_FUNCTION_FLOW.md)
 
 ---
 **Last Updated**: 2026-05-04

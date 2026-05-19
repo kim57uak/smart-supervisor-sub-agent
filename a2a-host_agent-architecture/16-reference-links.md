@@ -31,14 +31,14 @@ Updated: 2026-04-25
 
 ## Internal References
 
-- [13-implementation-roadmap.md](/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/13-implementation-roadmap.md)
-- [17-supervisor-package-class-spec.md](/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/17-supervisor-package-class-spec.md)
-- [21-a2a-supervisor-yml-recommended-structure.md](/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/21-a2a-supervisor-yml-recommended-structure.md)
-- [26-supervisor-entry-contract-and-runtime-flow.md](/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/26-supervisor-entry-contract-and-runtime-flow.md)
-- [27-supervisor-hitl-swarm-handoff-architecture.md](/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/27-supervisor-hitl-swarm-handoff-architecture.md)
-- [28-supervisor-a2ui-architecture-and-operating-model.md](/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/28-supervisor-a2ui-architecture-and-operating-model.md)
-- [29-supervisor-security-and-reliability-model.md](/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/29-supervisor-security-and-reliability-model.md)
-- [30-supervisor-responsibility-separation-guide.md](/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent/a2a-host_agent-architecture/30-supervisor-responsibility-separation-guide.md)
+- [13-implementation-roadmap.md](./13-implementation-roadmap.md)
+- [17-supervisor-package-class-spec.md](./17-supervisor-package-class-spec.md)
+- [21-a2a-supervisor-yml-recommended-structure.md](./21-a2a-supervisor-yml-recommended-structure.md)
+- [26-supervisor-entry-contract-and-runtime-flow.md](./26-supervisor-entry-contract-and-runtime-flow.md)
+- [27-supervisor-hitl-swarm-handoff-architecture.md](./27-supervisor-hitl-swarm-handoff-architecture.md)
+- [28-supervisor-a2ui-architecture-and-operating-model.md](./28-supervisor-a2ui-architecture-and-operating-model.md)
+- [29-supervisor-security-and-reliability-model.md](./29-supervisor-security-and-reliability-model.md)
+- [30-supervisor-responsibility-separation-guide.md](./30-supervisor-responsibility-separation-guide.md)
 
 ## 2026-04-25 정합성 메모
 

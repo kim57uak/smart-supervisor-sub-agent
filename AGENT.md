@@ -35,7 +35,7 @@ RTK reference:
 
 ## Project Map
 
-- Web app root: `/Users/dolpaks/Downloads/project/smart-supervisor-sub-agent`
+- Web app root: `./`
 - Supervisor Backend: `src/supervisor-agent/app`
 - Supervisor Static UI: `src/supervisor-agent/app/static`
 - Sub-Agent Backend: `src/sub-agent/app`
