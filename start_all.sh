@@ -15,7 +15,7 @@ echo ""
 
 # 2. Start Supervisor-Agent (Port 8000)
 echo ">>> [2/2] Starting Supervisor-Agent..."
-(cd src/supervisor-agent && ./start.sh)
+(cd src/supervisor_agent && ./start.sh)
 
 echo ""
 echo "======================================"

@@ -9,7 +9,7 @@ echo "======================================"
 
 # 1. Stop Supervisor-Agent
 echo ">>> [1/2] Stopping Supervisor-Agent..."
-(cd src/supervisor-agent && ./stop.sh)
+(cd src/supervisor_agent && ./stop.sh)
 
 echo ""
 
