@@ -22,6 +22,7 @@ echo "======================================"
 echo "All agents have been initiated."
 # Rationale (Why): Synchronized with src/sub-agent/start.sh (8082) 
 # and supervisor's routing config.
-echo "Sub-Agent: http://localhost:8082"
-echo "Supervisor-Agent: http://localhost:8000"
+echo "Sub-Agent:     http://localhost:8082"
+echo "Supervisor:     http://localhost:8000  (no mic)"
+echo "Supervisor SSL: https://localhost:8443 (with mic)"
 echo "======================================"

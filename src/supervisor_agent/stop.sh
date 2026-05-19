@@ -29,9 +29,10 @@ fi
 echo "Cleaning up any remaining processes..."
 
 # 1. Kill by Port (Most reliable)
-PORT=8000
-echo "Cleaning up processes on port $PORT..."
-lsof -ti :$PORT | xargs kill -9 2>/dev/null
+for PORT in 8000 8443; do
+    echo "Cleaning up processes on port $PORT..."
+    lsof -ti :$PORT | xargs kill -9 2>/dev/null
+done
 
 # 2. Kill by Pattern
 pkill -9 -f "uvicorn main:app.*--port $PORT"

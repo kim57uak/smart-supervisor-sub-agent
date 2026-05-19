@@ -72,9 +72,9 @@ class OpenAiRealtimeAdapter(VoiceAdapter):
                 },
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.4, # Rationale (Why): Reverted to 0.4 to be more sensitive to initial phonemes.
-                    "prefix_padding_ms": 600, # Rationale (Why): Increased to 600ms to capture more audio before VAD triggers.
-                    "silence_duration_ms": 800 
+                    "threshold": 0.5, # Rationale (Why): Increased to 0.5 to reduce false VAD triggers from residual background noise after frontend preprocessing (high-pass + noise gate).
+                    "prefix_padding_ms": 500, # Rationale (Why): Reduced to 500ms since preprocessing (gain normalization) gives cleaner speech onset.
+                    "silence_duration_ms": 1000 # Rationale (Why): Increased to 1000ms to avoid premature turn-end when user pauses briefly amid background noise.
                 }
             }
         }
